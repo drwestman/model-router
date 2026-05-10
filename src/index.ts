@@ -907,6 +907,11 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
   // intentionally NOT tracked here (per user decision: enforce on subagents only).
   const subagentCapState = new Map<string, SubagentState>();
 
+  // Bypass mode: when true, the router skips all system prompt injection,
+  // subagent tracking, cap enforcement, and narration detection for the
+  // current plugin lifetime (i.e., until OpenCode is restarted).
+  let bypassed = false;
+
   return {
     // -----------------------------------------------------------------------
     // Detect subagent calls via chat.message. When the agent name matches a
@@ -927,6 +932,7 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // is fully populated and await-safe (yield* on the plugin trigger).
     // -----------------------------------------------------------------------
     "chat.message": async (input: any, output: any) => {
+      if (bypassed) return;
       // Re-read cfg so /preset switches take effect without restart
       try {
         cfg = loadConfig();
@@ -960,6 +966,7 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // treats them as ground truth rather than advisory system noise.
     // -----------------------------------------------------------------------
     "tool.execute.after": async (input: any, output: any) => {
+      if (bypassed) return;
       const state = subagentCapState.get(input.sessionID);
       if (!state) return; // not a tracked subagent session
       if (!READ_ONLY_TOOLS.has(input.tool)) return;
@@ -990,6 +997,7 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // post-hoc signal.
     // -----------------------------------------------------------------------
     "experimental.text.complete": async (input: any, output: any) => {
+      if (bypassed) return;
       const text = output?.text;
       if (typeof text !== "string" || text.length < 20) return;
 
@@ -1062,6 +1070,11 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
         description:
           "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
       };
+      opencodeConfig.command["bypass"] = {
+        template: "$ARGUMENTS",
+        description:
+          "Toggle model-router bypass (disables delegation protocol for this session)",
+      };
       opencodeConfig.command["annotate-plan"] = {
         template: [
           "Annotate the plan with tier directives for model delegation.",
@@ -1099,6 +1112,7 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // just execute a task (especially smaller models like Haiku).
     // -----------------------------------------------------------------------
     "experimental.chat.system.transform": async (_input: any, output: any) => {
+      if (bypassed) return;
       try {
         cfg = loadConfig(); // Returns cache unless invalidated
       } catch {
@@ -1145,6 +1159,25 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
         output.parts.push({
           type: "text" as const,
           text: buildPresetOutput(cfg, input.arguments ?? ""),
+        });
+      }
+
+      if (input.command === "bypass") {
+        const arg = (input.arguments ?? "").trim().toLowerCase();
+        if (arg === "on") {
+          bypassed = true;
+        } else if (arg === "off") {
+          bypassed = false;
+        } else {
+          bypassed = !bypassed;
+        }
+        const status = bypassed ? "ON" : "OFF";
+        const desc = bypassed
+          ? "Model-router is **bypassed**. Delegation protocol, cap enforcement, and narration detection are disabled. The model will run without routing rules until you run `/bypass off` or restart OpenCode."
+          : "Model-router is **active**. Delegation protocol and all enforcement rules are in effect.";
+        output.parts.push({
+          type: "text" as const,
+          text: `# Bypass: ${status}\n\n${desc}`,
         });
       }
 
