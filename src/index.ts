@@ -70,6 +70,31 @@ interface RouterState {
 let _cachedConfig: RouterConfig | null = null;
 let _configDirty = true;
 let _cachedDelegationProtocolTemplate: string | null = null;
+const FALLBACK_DELEGATION_PROTOCOL_TEMPLATE = `<!-- Built-in fallback used when delegation-protocol.md is unavailable. -->
+## Model Delegation Protocol — MANDATORY
+
+You are the orchestrator. Preset: {{activePreset}}. Tiers: {{tierLine}}.{{modeSuffix}}
+
+### HARD ROUTING
+- Read-only exploration → delegate to @fast by default.
+- Implementation work → delegate to @medium.
+- Architecture, security, perf, or debugging after repeated failures → delegate to @heavy.
+
+### ROLE CONTRACT
+Decompose the request, dispatch the right subagent, synthesize results, and keep final user-facing orchestration here.
+
+### @fast contract
+Read-only exploration only; returns concrete findings and concise summaries.
+
+### @medium contract
+Implements changes, matches repo patterns, runs targeted verification, and reports blockers after repeated failures.
+
+### @heavy contract
+Use for deep analysis when concrete context is already available.
+
+{{taxonomyBlock}}{{decomposeBlock}}### Compact rules
+{{rulesLine}}{{fallbackBlock}}
+`;
 
 /** Mark config cache as stale so it is re-read on next access. */
 function invalidateConfigCache(): void {
@@ -89,10 +114,17 @@ function delegationProtocolTemplatePath(): string {
 
 function getDelegationProtocolTemplate(): string {
   if (_cachedDelegationProtocolTemplate === null) {
-    _cachedDelegationProtocolTemplate = readFileSync(
-      delegationProtocolTemplatePath(),
-      "utf-8",
-    );
+    try {
+      _cachedDelegationProtocolTemplate = readFileSync(
+        delegationProtocolTemplatePath(),
+        "utf-8",
+      );
+    } catch {
+      console.warn(
+        "[model-router] delegation protocol template unavailable; continuing without it.",
+      );
+      _cachedDelegationProtocolTemplate = FALLBACK_DELEGATION_PROTOCOL_TEMPLATE;
+    }
   }
   return _cachedDelegationProtocolTemplate;
 }
