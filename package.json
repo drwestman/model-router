@@ -29,6 +29,8 @@
   ],
   "files": [
     "src/",
+    "!src/**/*.js",
+    "!src/**/*.js.map",
     "tiers.json",
     "LICENSE",
     "README.md"

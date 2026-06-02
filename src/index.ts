@@ -87,17 +87,12 @@ function delegationProtocolTemplatePath(): string {
   );
 }
 
-function initializeDelegationProtocolTemplate(): string {
-  _cachedDelegationProtocolTemplate = readFileSync(
-    delegationProtocolTemplatePath(),
-    "utf-8",
-  );
-  return _cachedDelegationProtocolTemplate;
-}
-
 function getDelegationProtocolTemplate(): string {
   if (_cachedDelegationProtocolTemplate === null) {
-    throw new Error("delegation protocol template not initialized");
+    _cachedDelegationProtocolTemplate = readFileSync(
+      delegationProtocolTemplatePath(),
+      "utf-8",
+    );
   }
   return _cachedDelegationProtocolTemplate;
 }
@@ -893,7 +888,6 @@ function detectNarration(text: string): string[] {
 // ---------------------------------------------------------------------------
 
 const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
-  initializeDelegationProtocolTemplate();
   let cfg = loadConfig();
   const activeTiers = getActiveTiers(cfg);
 
