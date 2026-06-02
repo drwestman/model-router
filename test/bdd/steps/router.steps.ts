@@ -146,9 +146,31 @@ Then("the persisted state should contain mode {string}", function (this: RouterW
 Then("the registered agents should match the active fixture preset", function (this: RouterWorld) {
   const fixture = loadFixtureConfig() as {
     activePreset: string;
-    presets: Record<string, Record<string, { model: string; description: string }>>;
+    presets: Record<
+      string,
+      Record<
+        string,
+        {
+          model: string;
+          description: string;
+          steps: number;
+          variant?: string;
+          prompt?: string;
+        }
+      >
+    >;
   };
-  const agents = this.registeredConfig.agent as Record<string, { model: string; description: string }>;
+  const agents = this.registeredConfig.agent as Record<
+    string,
+    {
+      model: string;
+      description: string;
+      mode: string;
+      maxSteps: number;
+      variant?: string;
+      prompt?: string;
+    }
+  >;
   const activePreset = fixture.presets[fixture.activePreset]!;
 
   assert.deepEqual(Object.keys(agents).sort(), Object.keys(activePreset).sort());
@@ -156,6 +178,11 @@ Then("the registered agents should match the active fixture preset", function (t
   for (const [name, tier] of Object.entries(activePreset)) {
     assert.equal(agents[name]?.model, tier.model);
     assert.equal(agents[name]?.description, tier.description);
+    assert.equal(agents[name]?.mode, "subagent");
+    assert.equal(agents[name]?.maxSteps, tier.steps);
+    assert.equal(agents[name]?.variant, tier.variant);
+    assert.match(String(agents[name]?.prompt), /ANTI-NARRATION/);
+    assert.match(String(agents[name]?.prompt), new RegExp(tier.prompt!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });
 

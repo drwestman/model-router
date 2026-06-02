@@ -188,6 +188,10 @@ export function resolvePresetName(
   );
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
 export function validateConfig(raw: unknown): RouterConfig {
   if (typeof raw !== "object" || raw === null) {
     throw new Error("tiers.json: expected a JSON object at root");
@@ -233,15 +237,15 @@ export function validateConfig(raw: unknown): RouterConfig {
           `tiers.json: '${presetName}.${tierName}.description' must be a string`,
         );
       }
-      if (!Array.isArray(t.whenToUse)) {
+      if (!isStringArray(t.whenToUse)) {
         throw new Error(
-          `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array`,
+          `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array of strings`,
         );
       }
     }
   }
 
-  if (!Array.isArray(obj.rules)) {
+  if (!isStringArray(obj.rules)) {
     throw new Error("tiers.json: 'rules' must be an array of strings");
   }
   if (typeof obj.defaultTier !== "string") {
@@ -273,6 +277,11 @@ export function validateConfig(raw: unknown): RouterConfig {
           `tiers.json: mode '${modeName}.description' must be a string`,
         );
       }
+      if (m.overrideRules !== undefined && !isStringArray(m.overrideRules)) {
+        throw new Error(
+          `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`,
+        );
+      }
     }
   }
 
@@ -287,7 +296,7 @@ export function validateConfig(raw: unknown): RouterConfig {
     }
     const tc = obj.tierCaps as Record<string, unknown>;
     for (const [tierName, cap] of Object.entries(tc)) {
-      if (typeof cap !== "number" || !Number.isFinite(cap) || cap < 1) {
+      if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1) {
         throw new Error(
           `tiers.json: tierCaps.'${tierName}' must be a positive integer`,
         );
@@ -325,7 +334,7 @@ export function validateConfig(raw: unknown): RouterConfig {
     }
     const tp = obj.taskPatterns as Record<string, unknown>;
     for (const [tierName, patterns] of Object.entries(tp)) {
-      if (!Array.isArray(patterns)) {
+      if (!isStringArray(patterns)) {
         throw new Error(
           `tiers.json: taskPatterns.'${tierName}' must be an array of strings`,
         );
@@ -340,18 +349,20 @@ export function applyPersistedState(
   cfg: RouterConfig,
   state: RouterState,
 ): RouterConfig {
+  const nextCfg: RouterConfig = { ...cfg };
+
   if (state.activePreset) {
     const resolved = resolvePresetName(cfg, state.activePreset);
     if (resolved) {
-      cfg.activePreset = resolved;
+      nextCfg.activePreset = resolved;
     }
   }
 
   if (state.activeMode && cfg.modes?.[state.activeMode]) {
-    cfg.activeMode = state.activeMode;
+    nextCfg.activeMode = state.activeMode;
   }
 
-  return cfg;
+  return nextCfg;
 }
 
 export function readStateFile(filePath: string): RouterState {
@@ -765,7 +776,7 @@ function fingerprintToolCall(tool: string, args: unknown): string {
 /** Best-effort extraction of textual content from a chat.message output payload. */
 export function extractDispatchText(output: unknown): string {
   const o = output as Record<string, unknown> | undefined;
-  const parts = (o?.parts as unknown[]) ?? [];
+  const parts = Array.isArray(o?.parts) ? o.parts : [];
   const chunks: string[] = [];
   for (const p of parts) {
     if (typeof p === "string") {
@@ -1231,12 +1242,14 @@ export function buildAgentDefinition(
 ): Record<string, unknown> {
   const resolvedPrompt = tier.prompt ?? cfg.tierPrompts?.[name];
   const claudePrefix = isClaudeModel(tier.model)
-    ? `${CLAUDE_TIER_PREFIX[name]}\n\n${CLAUDE_ANTI_NARRATION}`
+    ? [CLAUDE_TIER_PREFIX[name], CLAUDE_ANTI_NARRATION]
+        .filter((part): part is string => Boolean(part))
+        .join("\n\n") || undefined
     : undefined;
   const finalPrompt =
     claudePrefix && resolvedPrompt
       ? `${claudePrefix}\n\n---\n\n${resolvedPrompt}`
-      : resolvedPrompt;
+      : claudePrefix ?? resolvedPrompt;
 
   const agentDef: Record<string, unknown> = {
     model: tier.model,

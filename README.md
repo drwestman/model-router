@@ -218,6 +218,8 @@ Place the checkout where OpenCode loads plugins from (`.opencode/plugins/` or `~
 npm install
 ```
 
+The test setup targets Node `20`, `22`, or `24+`.
+
 ## Testing
 
 Run all tests:
@@ -237,6 +239,8 @@ Run the BDD suite:
 ```bash
 npm run test:bdd
 ```
+
+`npm test` runs both the unit and BDD suites.
 
 ### BDD notes
 
