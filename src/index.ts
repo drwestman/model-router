@@ -17,7 +17,7 @@ interface ReasoningConfig {
   summary?: "auto" | "always" | "never";
 }
 
-interface TierConfig {
+export interface TierConfig {
   model: string;
   variant?: string;
   thinking?: ThinkingConfig;
@@ -37,13 +37,13 @@ interface FallbackConfig {
   presets?: Record<string, Record<string, string[]>>;
 }
 
-interface ModeConfig {
+export interface ModeConfig {
   defaultTier: string;
   description: string;
   overrideRules?: string[];
 }
 
-interface RouterConfig {
+export interface RouterConfig {
   activePreset: string;
   activeMode?: string;
   presets: Record<string, Preset>;
@@ -58,9 +58,14 @@ interface RouterConfig {
   tierCaps?: Record<string, number>;
 }
 
-interface RouterState {
+export interface RouterState {
   activePreset?: string;
   activeMode?: string;
+}
+
+export interface RouterPaths {
+  configPath: string;
+  statePath: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +74,7 @@ interface RouterState {
 
 let _cachedConfig: RouterConfig | null = null;
 let _configDirty = true;
+let _cachedConfigKey: string | null = null;
 let _cachedDelegationProtocolTemplate: string | null = null;
 const FALLBACK_DELEGATION_PROTOCOL_TEMPLATE = `<!-- Built-in fallback used when delegation-protocol.md is unavailable. -->
 ## Model Delegation Protocol — MANDATORY
@@ -97,8 +103,9 @@ Use for deep analysis when concrete context is already available.
 `;
 
 /** Mark config cache as stale so it is re-read on next access. */
-function invalidateConfigCache(): void {
+export function invalidateConfigCache(): void {
   _configDirty = true;
+  _cachedConfigKey = null;
 }
 
 function getPluginRoot(): string {
@@ -136,20 +143,34 @@ function renderTemplate(
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => values[key] ?? "");
 }
 
+export function resolveRouterPaths(
+  env: NodeJS.ProcessEnv = process.env,
+): RouterPaths {
+  const configuredConfigPath = env.OPENCODE_MODEL_ROUTER_CONFIG_PATH?.trim();
+  const configuredStatePath = env.OPENCODE_MODEL_ROUTER_STATE_PATH?.trim();
+
+  return {
+    configPath: configuredConfigPath || join(getPluginRoot(), "tiers.json"),
+    statePath:
+      configuredStatePath ||
+      join(
+        homedir(),
+        ".config",
+        "opencode",
+        "opencode-model-router.state.json",
+      ),
+  };
+}
+
 function configPath(): string {
-  return join(getPluginRoot(), "tiers.json");
+  return resolveRouterPaths().configPath;
 }
 
 function statePath(): string {
-  return join(
-    homedir(),
-    ".config",
-    "opencode",
-    "opencode-model-router.state.json",
-  );
+  return resolveRouterPaths().statePath;
 }
 
-function resolvePresetName(
+export function resolvePresetName(
   cfg: RouterConfig,
   requestedPreset: string,
 ): string | undefined {
@@ -167,7 +188,11 @@ function resolvePresetName(
   );
 }
 
-function validateConfig(raw: unknown): RouterConfig {
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+export function validateConfig(raw: unknown): RouterConfig {
   if (typeof raw !== "object" || raw === null) {
     throw new Error("tiers.json: expected a JSON object at root");
   }
@@ -212,15 +237,15 @@ function validateConfig(raw: unknown): RouterConfig {
           `tiers.json: '${presetName}.${tierName}.description' must be a string`,
         );
       }
-      if (!Array.isArray(t.whenToUse)) {
+      if (!isStringArray(t.whenToUse)) {
         throw new Error(
-          `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array`,
+          `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array of strings`,
         );
       }
     }
   }
 
-  if (!Array.isArray(obj.rules)) {
+  if (!isStringArray(obj.rules)) {
     throw new Error("tiers.json: 'rules' must be an array of strings");
   }
   if (typeof obj.defaultTier !== "string") {
@@ -252,6 +277,11 @@ function validateConfig(raw: unknown): RouterConfig {
           `tiers.json: mode '${modeName}.description' must be a string`,
         );
       }
+      if (m.overrideRules !== undefined && !isStringArray(m.overrideRules)) {
+        throw new Error(
+          `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`,
+        );
+      }
     }
   }
 
@@ -266,7 +296,7 @@ function validateConfig(raw: unknown): RouterConfig {
     }
     const tc = obj.tierCaps as Record<string, unknown>;
     for (const [tierName, cap] of Object.entries(tc)) {
-      if (typeof cap !== "number" || !Number.isFinite(cap) || cap < 1) {
+      if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1) {
         throw new Error(
           `tiers.json: tierCaps.'${tierName}' must be a positive integer`,
         );
@@ -304,7 +334,7 @@ function validateConfig(raw: unknown): RouterConfig {
     }
     const tp = obj.taskPatterns as Record<string, unknown>;
     for (const [tierName, patterns] of Object.entries(tp)) {
-      if (!Array.isArray(patterns)) {
+      if (!isStringArray(patterns)) {
         throw new Error(
           `tiers.json: taskPatterns.'${tierName}' must be an array of strings`,
         );
@@ -315,34 +345,67 @@ function validateConfig(raw: unknown): RouterConfig {
   return raw as RouterConfig;
 }
 
+export function applyPersistedState(
+  cfg: RouterConfig,
+  state: RouterState,
+): RouterConfig {
+  const nextCfg: RouterConfig = { ...cfg };
+
+  if (state.activePreset) {
+    const resolved = resolvePresetName(cfg, state.activePreset);
+    if (resolved) {
+      nextCfg.activePreset = resolved;
+    }
+  }
+
+  if (state.activeMode && cfg.modes?.[state.activeMode]) {
+    nextCfg.activeMode = state.activeMode;
+  }
+
+  return nextCfg;
+}
+
+export function readStateFile(filePath: string): RouterState {
+  try {
+    if (existsSync(filePath)) {
+      return JSON.parse(readFileSync(filePath, "utf-8")) as RouterState;
+    }
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
+export function writeStateFile(
+  filePath: string,
+  patch: Partial<RouterState>,
+): void {
+  const state = { ...readStateFile(filePath), ...patch };
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+
+export function loadConfigFromPaths(
+  paths: RouterPaths = resolveRouterPaths(),
+): RouterConfig {
+  const raw = JSON.parse(readFileSync(paths.configPath, "utf-8"));
+  const cfg = validateConfig(raw);
+
+  return applyPersistedState(cfg, readStateFile(paths.statePath));
+}
+
 function loadConfig(): RouterConfig {
-  if (_cachedConfig && !_configDirty) {
+  const paths = resolveRouterPaths();
+  const cacheKey = `${paths.configPath}::${paths.statePath}`;
+
+  if (_cachedConfig && !_configDirty && _cachedConfigKey === cacheKey) {
     return _cachedConfig;
   }
 
-  const raw = JSON.parse(readFileSync(configPath(), "utf-8"));
-  const cfg = validateConfig(raw);
-
-  try {
-    if (existsSync(statePath())) {
-      const state = JSON.parse(
-        readFileSync(statePath(), "utf-8"),
-      ) as RouterState;
-      if (state.activePreset) {
-        const resolved = resolvePresetName(cfg, state.activePreset);
-        if (resolved) {
-          cfg.activePreset = resolved;
-        }
-      }
-      if (state.activeMode && cfg.modes?.[state.activeMode]) {
-        cfg.activeMode = state.activeMode;
-      }
-    }
-  } catch {
-    // Ignore state read errors and keep tiers.json defaults
-  }
+  const cfg = loadConfigFromPaths(paths);
 
   _cachedConfig = cfg;
+  _cachedConfigKey = cacheKey;
   _configDirty = false;
   return cfg;
 }
@@ -353,22 +416,12 @@ function loadConfig(): RouterConfig {
 
 /** Read current persisted state (or empty object on failure). */
 function readState(): RouterState {
-  try {
-    if (existsSync(statePath())) {
-      return JSON.parse(readFileSync(statePath(), "utf-8")) as RouterState;
-    }
-  } catch {
-    // ignore
-  }
-  return {};
+  return readStateFile(statePath());
 }
 
 /** Write state to disk (merges with existing keys). */
 function writeState(patch: Partial<RouterState>): void {
-  const state = { ...readState(), ...patch };
-  const p = statePath();
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
+  writeStateFile(statePath(), patch);
 }
 
 function saveActivePreset(presetName: string): void {
@@ -509,7 +562,7 @@ function buildDecomposeHint(cfg: RouterConfig): string {
 // System prompt builder
 // ---------------------------------------------------------------------------
 
-function buildDelegationProtocol(cfg: RouterConfig): string {
+export function buildDelegationProtocol(cfg: RouterConfig): string {
   const tiers = getActiveTiers(cfg);
 
   // Compact tier summary: @name=model/variant(costRatio)
@@ -583,7 +636,7 @@ function buildTiersOutput(cfg: RouterConfig): string {
 // /budget command output
 // ---------------------------------------------------------------------------
 
-function buildBudgetOutput(cfg: RouterConfig, args: string): string {
+export function buildBudgetOutput(cfg: RouterConfig, args: string): string {
   const modes = cfg.modes;
   if (!modes || Object.keys(modes).length === 0) {
     return 'No modes configured in tiers.json. Add a "modes" section to enable budget mode.';
@@ -629,7 +682,7 @@ function buildBudgetOutput(cfg: RouterConfig, args: string): string {
 // /preset command output
 // ---------------------------------------------------------------------------
 
-function buildPresetOutput(cfg: RouterConfig, args: string): string {
+export function buildPresetOutput(cfg: RouterConfig, args: string): string {
   const requestedPreset = args.trim();
 
   // No args: show available presets
@@ -694,7 +747,7 @@ interface SubagentState {
 }
 
 /** Extract the first `CAP:N` or `CAP:none` directive from a dispatch prompt. */
-function parseCapDirective(text: string): Cap | null {
+export function parseCapDirective(text: string): Cap | null {
   const m = text.match(/\bCAP\s*:\s*(none|\d+)\b/i);
   if (!m) return null;
   const raw = m[1]!.toLowerCase();
@@ -721,9 +774,9 @@ function fingerprintToolCall(tool: string, args: unknown): string {
 }
 
 /** Best-effort extraction of textual content from a chat.message output payload. */
-function extractDispatchText(output: unknown): string {
+export function extractDispatchText(output: unknown): string {
   const o = output as Record<string, unknown> | undefined;
-  const parts = (o?.parts as unknown[]) ?? [];
+  const parts = Array.isArray(o?.parts) ? o.parts : [];
   const chunks: string[] = [];
   for (const p of parts) {
     if (typeof p === "string") {
@@ -743,7 +796,7 @@ function extractDispatchText(output: unknown): string {
 }
 
 /** Build the banner appended to every read-only tool result in a subagent session. */
-function buildCapBanner(
+export function buildCapBanner(
   state: SubagentState,
   isRedundant: boolean,
   previousCall: number | undefined,
@@ -897,7 +950,7 @@ const NARRATION_PATTERNS: RegExp[] = [
 ];
 
 /** Returns matched narration phrases, deduped and capped. Empty array = no narration detected. */
-function detectNarration(text: string): string[] {
+export function detectNarration(text: string): string[] {
   if (text.length < 20) return [];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -1039,46 +1092,7 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // Register tier agents + commands at load time
     // -----------------------------------------------------------------------
     config: async (opencodeConfig: any) => {
-      opencodeConfig.agent ??= {};
-
-      for (const [name, tier] of Object.entries(activeTiers)) {
-        // Resolve prompt: per-tier override wins; otherwise fall back to global tierPrompts[name].
-        const resolvedPrompt = tier.prompt ?? cfg.tierPrompts?.[name];
-
-        // For Claude-backed tiers, prepend an adversarial opener that revokes
-        // the cached "Claude Code exploratory agent" priming for this dispatch.
-        // Detection is by model string, so hybrid presets get the override
-        // only on their Claude-backed tiers.
-        const claudePrefix = isClaudeModel(tier.model)
-          ? `${CLAUDE_TIER_PREFIX[name]}\n\n${CLAUDE_ANTI_NARRATION}`
-          : undefined;
-        const finalPrompt =
-          claudePrefix && resolvedPrompt
-            ? `${claudePrefix}\n\n---\n\n${resolvedPrompt}`
-            : resolvedPrompt;
-
-        const agentDef: Record<string, unknown> = {
-          model: tier.model,
-          mode: "subagent",
-          description: tier.description,
-          maxSteps: tier.steps,
-          prompt: finalPrompt,
-          color: tier.color,
-        };
-
-        // Apply variant (thinking/reasoning mode)
-        if (tier.variant) {
-          agentDef.variant = tier.variant;
-        }
-
-        // Apply provider-specific options
-        const opts = buildAgentOptions(tier);
-        if (Object.keys(opts).length > 0) {
-          agentDef.options = opts;
-        }
-
-        opencodeConfig.agent[name] = agentDef;
-      }
+      registerActiveTierAgents(opencodeConfig, cfg, activeTiers);
 
       // Register commands
       opencodeConfig.command ??= {};
@@ -1220,3 +1234,52 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
 };
 
 export default ModelRouterPlugin;
+
+export function buildAgentDefinition(
+  name: string,
+  tier: TierConfig,
+  cfg: RouterConfig,
+): Record<string, unknown> {
+  const resolvedPrompt = tier.prompt ?? cfg.tierPrompts?.[name];
+  const claudePrefix = isClaudeModel(tier.model)
+    ? [CLAUDE_TIER_PREFIX[name], CLAUDE_ANTI_NARRATION]
+        .filter((part): part is string => Boolean(part))
+        .join("\n\n") || undefined
+    : undefined;
+  const finalPrompt =
+    claudePrefix && resolvedPrompt
+      ? `${claudePrefix}\n\n---\n\n${resolvedPrompt}`
+      : claudePrefix ?? resolvedPrompt;
+
+  const agentDef: Record<string, unknown> = {
+    model: tier.model,
+    mode: "subagent",
+    description: tier.description,
+    maxSteps: tier.steps,
+    prompt: finalPrompt,
+    color: tier.color,
+  };
+
+  if (tier.variant) {
+    agentDef.variant = tier.variant;
+  }
+
+  const opts = buildAgentOptions(tier);
+  if (Object.keys(opts).length > 0) {
+    agentDef.options = opts;
+  }
+
+  return agentDef;
+}
+
+export function registerActiveTierAgents(
+  opencodeConfig: Record<string, any>,
+  cfg: RouterConfig,
+  tiers: Preset = getActiveTiers(cfg),
+): void {
+  opencodeConfig.agent ??= {};
+
+  for (const [name, tier] of Object.entries(tiers)) {
+    opencodeConfig.agent[name] = buildAgentDefinition(name, tier, cfg);
+  }
+}

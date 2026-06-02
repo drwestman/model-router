@@ -213,6 +213,42 @@ Add to `~/.config/opencode/opencode.json`:
 ### Local clone
 Place the checkout where OpenCode loads plugins from (`.opencode/plugins/` or `~/.config/opencode/plugins/`).
 
+### Install dependencies for local development
+```bash
+npm install
+```
+
+The test setup targets Node `20`, `22`, or `24+`.
+
+## Testing
+
+Run all tests:
+
+```bash
+npm test
+```
+
+Run just the small helper/unit tests:
+
+```bash
+npm run test:unit
+```
+
+Run the BDD suite:
+
+```bash
+npm run test:bdd
+```
+
+`npm test` runs both the unit and BDD suites.
+
+### BDD notes
+
+- Feature files live in `test/bdd/features/`.
+- Step definitions live in `test/bdd/steps/` and run through `tsx`.
+- Test runs use fixture-based `tiers.json` data from `test/fixtures/`.
+- Persistence tests write isolated temp state under `tmp/`, never your real `~/.config/opencode/` state.
+
 ## Configuration
 
 All configuration lives in `tiers.json` at the plugin root.

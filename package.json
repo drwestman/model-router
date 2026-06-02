@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./src/index.ts",
   "license": "GPL-3.0-only",
+  "engines": {
+    "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/marco-jardim/opencode-model-router.git"
@@ -38,8 +41,15 @@
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.0.0"
   },
+  "scripts": {
+    "test": "npm run test:unit && npm run test:bdd",
+    "test:unit": "tsx --test test/unit/**/*.test.ts",
+    "test:bdd": "node --import tsx ./node_modules/@cucumber/cucumber/bin/cucumber-js test/bdd/features/**/*.feature --import test/bdd/steps/**/*.ts"
+  },
   "devDependencies": {
+    "@cucumber/cucumber": "^12.2.0",
     "@types/node": "^25.2.3",
+    "tsx": "^4.20.5",
     "typescript": "^5.9.3"
   }
 }

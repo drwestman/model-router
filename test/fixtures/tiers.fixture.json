@@ -1,0 +1,113 @@
+{
+  "activePreset": "anthropic",
+  "activeMode": "normal",
+  "presets": {
+    "anthropic": {
+      "fast": {
+        "model": "anthropic/claude-haiku-4-5",
+        "description": "Fast exploration tier",
+        "costRatio": 1,
+        "color": "green",
+        "steps": 2,
+        "whenToUse": ["search", "read", "list"],
+        "prompt": "Stay narrow and read-only."
+      },
+      "medium": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "variant": "max",
+        "description": "Implementation tier",
+        "costRatio": 5,
+        "color": "blue",
+        "steps": 4,
+        "whenToUse": ["implement", "refactor", "test"],
+        "prompt": "Implement changes and verify them."
+      },
+      "heavy": {
+        "model": "anthropic/claude-opus-4-6",
+        "variant": "high",
+        "description": "Deep analysis tier",
+        "costRatio": 20,
+        "color": "red",
+        "steps": 6,
+        "whenToUse": ["architecture", "security"],
+        "prompt": "Analyze deeply when context is already available."
+      }
+    },
+    "openai": {
+      "fast": {
+        "model": "openai/gpt-5.4-mini-fast",
+        "description": "OpenAI fast exploration tier",
+        "costRatio": 1,
+        "color": "green",
+        "steps": 2,
+        "whenToUse": ["search", "read"],
+        "prompt": "Stay narrow and read-only."
+      },
+      "medium": {
+        "model": "openai/gpt-5.4-fast",
+        "variant": "high",
+        "description": "OpenAI implementation tier",
+        "costRatio": 5,
+        "color": "blue",
+        "steps": 4,
+        "whenToUse": ["implement", "tests"],
+        "prompt": "Implement changes and verify them."
+      },
+      "heavy": {
+        "model": "openai/gpt-5.5-fast",
+        "variant": "xhigh",
+        "description": "OpenAI deep analysis tier",
+        "costRatio": 20,
+        "color": "red",
+        "steps": 6,
+        "whenToUse": ["architecture", "perf"],
+        "prompt": "Analyze deeply when context is already available."
+      }
+    }
+  },
+  "rules": [
+    "read-only exploration -> @fast",
+    "implementation work -> @medium",
+    "architecture or security -> @heavy"
+  ],
+  "defaultTier": "medium",
+  "fallback": {
+    "global": {
+      "anthropic": ["openai"],
+      "openai": ["anthropic"]
+    }
+  },
+  "taskPatterns": {
+    "fast": ["grep", "read", "ls"],
+    "medium": ["impl", "refactor", "tests"],
+    "heavy": ["arch", "security"]
+  },
+  "modes": {
+    "normal": {
+      "defaultTier": "medium",
+      "description": "Balanced routing mode"
+    },
+    "budget": {
+      "defaultTier": "fast",
+      "description": "Prefer cheaper tiers when possible",
+      "overrideRules": [
+        "Prefer @fast unless quality risk is high",
+        "Escalate to @medium only when implementation complexity demands it"
+      ]
+    },
+    "quality": {
+      "defaultTier": "heavy",
+      "description": "Prefer stronger tiers for difficult work"
+    }
+  },
+  "tierPrompts": {
+    "fast": "Global fast guidance.",
+    "medium": "Global medium guidance.",
+    "heavy": "Global heavy guidance."
+  },
+  "tierCaps": {
+    "fast": 8,
+    "medium": 5,
+    "heavy": 3
+  }
+}
