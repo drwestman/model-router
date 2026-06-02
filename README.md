@@ -33,7 +33,7 @@ Every tier carries its `costRatio` (fast=1x, medium=5x, heavy=20x) injected into
 If the orchestrator is already running on Opus, the rule `self∈opus→never→@heavy` fires — it does the heavy work itself rather than delegating to another Opus instance.
 
 **Multi-provider support with automatic fallback.**
-Four presets out of the box: Anthropic, OpenAI, GitHub Copilot, Google. Switch with `/preset`. If a provider fails, the fallback chain tries the next one automatically.
+Five presets out of the box: Anthropic, OpenAI, GitHub Copilot, Google, Hybrid. Switch with `/preset`. If a provider fails, the fallback chain tries the next one automatically.
 
 **Plan annotation for long tasks.**
 `/annotate-plan` reads a markdown plan and tags each step with `[tier:fast]`, `[tier:medium]`, or `[tier:heavy]` — removing all routing ambiguity from multi-step workflows.
@@ -116,11 +116,11 @@ Task distribution: 18 exploration (60%), 10 implementation (33%), 2 architecture
 
 On every message, the plugin injects ~210 tokens into the system prompt. The notation is intentionally dense and compressed — it's **optimized for LLM comprehension, not human readability**. An agent reads it as a precise routing grammar; a human might squint at it. That's by design: verbose prose would cost 4x more tokens per message with no routing benefit.
 
-What the orchestrator sees (Anthropic preset, normal mode):
+Illustrative excerpt of the generated delegation protocol (see `src/index.ts` for the exact live output):
 
 ```
 ## Model Delegation Protocol
-Preset: anthropic. Tiers: @fast=claude-haiku-4-5(1x) @medium=claude-sonnet-4-5/max(5x) @heavy=claude-opus-4-6/max(20x). mode:normal
+Preset: anthropic. Tiers: @fast=claude-haiku-4-5(1x) @medium=claude-sonnet-4-6/max(5x) @heavy=claude-opus-4-6/high(20x). mode:normal
 R: @fast→search/grep/read/git-info/ls/lookup-docs/types/count/exists-check/rename @medium→impl-feature/refactor/write-tests/bugfix(≤2)/edit-logic/code-review/build-fix/create-file/db-migrate/api-endpoint/config-update @heavy→arch-design/debug(≥3fail)/sec-audit/perf-opt/migrate-strategy/multi-system-integration/tradeoff-analysis/rca
 Multi-phase: prefer explore(@fast)→execute(@medium) when phases are separable. Cheapest-first when practical.
 1.[tier:X] tag in plan→delegate X 2.plan:fast/cheap→@fast | plan:medium→@medium | plan:heavy→@heavy 3.default preference: read-only→@fast | implementation→@medium 4.orchestrate=self,execute=subagent 5.trivial(≤1 tool call,no expected follow-up)→direct,skip-delegate 6.before @heavy: gather context first(usually via @fast); if already sufficient, dispatch directly 7.if self is opus: skip-@heavy(do locally), still route broader read-only exploration to @fast 8.min(cost,adequate-tier)
@@ -180,15 +180,16 @@ With router → split:
 
 ## Recommended setup
 
-**Orchestrator**: use `claude-sonnet-4-5` (or equivalent mid-tier) as your primary/default model. Not Opus.
+**Orchestrator**: use `claude-sonnet-4-6` (max) or an equivalent mid-tier model as your primary/default model. Not Opus.
 
 Why: the orchestrator runs on every message, including trivial ones. Sonnet can read the delegation protocol and make routing decisions just as well as Opus. You reserve Opus for when it's genuinely needed — via `@heavy` delegation.
 
 In your `opencode.json`:
 ```json
 {
-  "model": "anthropic/claude-sonnet-4-5",
-  "autoshare": false
+  "model": "anthropic/claude-sonnet-4-6",
+  "share": "disabled",
+  "plugin": ["opencode-model-router"]
 }
 ```
 
@@ -205,33 +206,12 @@ npm install -g opencode-model-router
 Add to `~/.config/opencode/opencode.json`:
 ```json
 {
-  "plugin": {
-    "opencode-model-router": {
-      "type": "npm",
-      "package": "opencode-model-router"
-    }
-  }
+  "plugin": ["opencode-model-router"]
 }
 ```
 
 ### Local clone
-```bash
-git clone https://github.com/your-username/opencode-model-router
-cd opencode-model-router
-npm install
-```
-
-In `~/.config/opencode/opencode.json`:
-```json
-{
-  "plugin": {
-    "opencode-model-router": {
-      "type": "local",
-      "path": "/absolute/path/to/opencode-model-router"
-    }
-  }
-}
-```
+Place the checkout where OpenCode loads plugins from (`.opencode/plugins/` or `~/.config/opencode/plugins/`).
 
 ## Configuration
 
@@ -239,27 +219,27 @@ All configuration lives in `tiers.json` at the plugin root.
 
 ### Presets
 
-The plugin ships with four presets (switch with `/preset <name>`):
+The plugin ships with five presets (switch with `/preset <name>`):
 
 **anthropic** (default):
 | Tier | Model | Cost ratio |
 |------|-------|-----------|
 | @fast | `anthropic/claude-haiku-4-5` | 1x |
-| @medium | `anthropic/claude-sonnet-4-5` (max) | 5x |
-| @heavy | `anthropic/claude-opus-4-6` (max) | 20x |
+| @medium | `anthropic/claude-sonnet-4-6` (max) | 5x |
+| @heavy | `anthropic/claude-opus-4-6` (high) | 20x |
 
 **openai**:
 | Tier | Model | Cost ratio |
 |------|-------|-----------|
-| @fast | `openai/gpt-5.3-codex-spark` | 1x |
-| @medium | `openai/gpt-5.3-codex` | 5x |
-| @heavy | `openai/gpt-5.3-codex` (xhigh) | 20x |
+| @fast | `openai/gpt-5.4-mini-fast` | 1x |
+| @medium | `openai/gpt-5.4-fast` (high) | 5x |
+| @heavy | `openai/gpt-5.5-fast` (xhigh) | 20x |
 
 **github-copilot**:
 | Tier | Model | Cost ratio |
 |------|-------|-----------|
 | @fast | `github-copilot/claude-haiku-4-5` | 1x |
-| @medium | `github-copilot/claude-sonnet-4-5` | 5x |
+| @medium | `github-copilot/claude-sonnet-4-6` | 5x |
 | @heavy | `github-copilot/claude-opus-4-6` (thinking) | 20x |
 
 **google**:
@@ -269,16 +249,23 @@ The plugin ships with four presets (switch with `/preset <name>`):
 | @medium | `google/gemini-2.5-pro` | 5x |
 | @heavy | `google/gemini-3-pro-preview` | 20x |
 
+**hybrid**:
+| Tier | Model | Cost ratio |
+|------|-------|-----------|
+| @fast | `firepass/accounts/fireworks/routers/kimi-k2p6-turbo` | 1x |
+| @medium | `openai/gpt-5.5-fast` (high) | 5x |
+| @heavy | `anthropic/claude-opus-4-6` (max) | 20x |
+
 ### Routing modes
 
 Switch with `/budget <mode>`. Mode is persisted across restarts.
 
 | Mode | Default tier | Behavior |
 |------|-------------|----------|
-| `normal` | @medium | Balanced — routes by task complexity |
-| `budget` | @fast | Aggressive savings — defaults cheap, escalates only when necessary |
-| `quality` | @medium | Quality-first — liberal use of @medium/@heavy |
-| `deep` | @heavy | Deep-analysis mode — heavy-first for architecture/debug/security with longer heavy runs |
+| `normal` | @medium | Balanced quality and cost — delegates based on task complexity |
+| `budget` | @fast | Aggressive cost savings — defaults to cheapest tier, escalates only when needed |
+| `quality` | @medium | Quality-first — uses stronger models more liberally for better results |
+| `deep` | @heavy | Deep analysis mode — prioritizes thorough architecture/debug work with long heavy runs |
 
 ```json
 {
@@ -588,6 +575,7 @@ Defines provider fallback order when a delegated task fails:
 | `/preset <name>` | Switch preset (e.g., `/preset openai`) |
 | `/budget` | Show available modes and which is active |
 | `/budget <mode>` | Switch routing mode (`normal`, `budget`, `quality`, `deep`) |
+| `/bypass` | Toggle router bypass for the current session |
 | `/annotate-plan [path]` | Annotate a plan file with `[tier:X]` tags for each step |
 
 ## Plan annotation
