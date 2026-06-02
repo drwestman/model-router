@@ -5,3 +5,4 @@ src/**/*.js.map
 *.tgz
 .DS_Store
 Thumbs.db
+tmp/
