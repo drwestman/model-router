@@ -11,6 +11,7 @@ import {
   parseCapDirective,
   writeStateFile,
 } from "../../src/index.ts";
+import { isClaudeModel } from "../../src/providers/claude.ts";
 import { createRouterTestEnv, readJSONFile } from "../helpers/router-test-env.ts";
 
 test("loadConfigFromPaths applies persisted preset and mode", () => {
@@ -180,6 +181,44 @@ test("buildAgentDefinition omits undefined prefix for custom Claude tier names",
     const prompt = String(agent.prompt);
     assert.match(prompt, /ANTI-NARRATION/);
     assert.doesNotMatch(prompt, /undefined/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("isClaudeModel matches proxied Claude identifiers with dot separators", () => {
+  assert.equal(isClaudeModel("anthropic/claude-sonnet-4-6"), true);
+  assert.equal(isClaudeModel("github-copilot/claude-sonnet-4-6"), true);
+  assert.equal(isClaudeModel("bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0"), true);
+  assert.equal(isClaudeModel("openai/gpt-5.4-fast"), false);
+});
+
+test("buildAgentDefinition applies Claude prefix for proxied Claude models regardless of provider", () => {
+  const env = createRouterTestEnv();
+
+  try {
+    const cfg = loadConfigFromPaths({
+      configPath: env.configPath,
+      statePath: env.statePath,
+    });
+    const agent = buildAgentDefinition(
+      "medium",
+      {
+        model: "openai/claude-sonnet-4-6",
+        variant: "high",
+        description: "Custom proxied Claude tier",
+        costRatio: 5,
+        color: "blue",
+        steps: 4,
+        whenToUse: ["implement"],
+        prompt: "Implement changes and verify them.",
+      } as never,
+      cfg,
+    ) as Record<string, unknown>;
+
+    const prompt = String(agent.prompt);
+    assert.match(prompt, /ANTI-NARRATION/);
+    assert.match(prompt, /Implement changes and verify them\./);
   } finally {
     env.cleanup();
   }
