@@ -32,6 +32,7 @@
   ],
   "files": [
     "src/index.js",
+    "src/generated/build-info.json",
     "src/templates/delegation-protocol.md",
     "src/opencode-ai-plugin.d.ts",
     "tiers.json",

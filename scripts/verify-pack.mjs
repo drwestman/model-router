@@ -11,6 +11,7 @@ const allowedFiles = [
   "LICENSE",
   "README.md",
   "package.json",
+  "src/generated/build-info.json",
   "src/index.js",
   "src/opencode-ai-plugin.d.ts",
   "src/templates/delegation-protocol.md",

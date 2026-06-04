@@ -217,6 +217,26 @@ npm install
 
 The test setup targets Node `20`, `22`, or `24+`.
 
+### Build version metadata
+
+`npm run build` now stamps generated build metadata into the packaged plugin version using SemVer build metadata:
+
+```text
+<package.json version>+<build number>
+```
+
+Examples:
+
+- CI build: `1.1.16+1234`
+- Local build: `1.1.16+20260604151617`
+
+Rules:
+
+- The base release version stays in `package.json`.
+- `GITHUB_RUN_NUMBER`, `BUILD_NUMBER`, and similar CI env vars are used when present.
+- `OPENCODE_MODEL_ROUTER_BUILD_NUMBER` overrides the detected value.
+- Local builds fall back to a UTC timestamp so every build gets a fresh traceable version without mutating committed release metadata.
+
 ### Test locally from a clone
 Do not point OpenCode at `src/index.js` or `src/index.ts` directly. Install the package into OpenCode's local npm environment and reference the package name. `npm run install:local` is the convenience wrapper for the real package workflow and runs the same `build + typecheck` gate as `prepack`.
 

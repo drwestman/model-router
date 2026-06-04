@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ModelRouterPlugin, {
   invalidateConfigCache,
+  routerBuildInfo,
+  routerVersion,
 } from "../../src/index.ts";
 import {
   applyPersistedState,
@@ -276,6 +278,15 @@ test("buildAgentDefinition omits undefined prefix for custom Claude tier names",
   } finally {
     env.cleanup();
   }
+});
+
+test("router exports the generated build version", () => {
+  assert.equal(routerVersion, routerBuildInfo.fullVersion);
+  assert.match(routerVersion, /^\d+\.\d+\.\d+\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/);
+  assert.equal(
+    (ModelRouterPlugin as typeof ModelRouterPlugin & { version?: string }).version,
+    routerVersion,
+  );
 });
 
 test("registerActiveTierAgents skips invalid tier entries without crashing", () => {

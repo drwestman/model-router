@@ -70,6 +70,16 @@ export interface RouterPaths {
   statePath: string;
 }
 
+export interface RouterBuildInfo {
+  baseVersion: string;
+  buildNumber: string;
+  buildSource: "ci" | "override" | "local";
+  fullVersion: string;
+}
+
+export const routerBuildInfo = loadRouterBuildInfo();
+export const routerVersion = routerBuildInfo.fullVersion;
+
 // ---------------------------------------------------------------------------
 // Config loader with caching
 // ---------------------------------------------------------------------------
@@ -118,6 +128,10 @@ function delegationProtocolTemplatePath(): string {
   return join(getSourceDir(), "templates", "delegation-protocol.md");
 }
 
+function buildInfoPath(): string {
+  return join(getSourceDir(), "generated", "build-info.json");
+}
+
 function getSourceDir(): string {
   try {
     return dirname(fileURLToPath(import.meta.url));
@@ -134,6 +148,60 @@ function safeCurrentWorkingDir(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function packageJsonVersion(): string {
+  try {
+    const raw = JSON.parse(readFileSync(join(getPluginRoot(), "package.json"), "utf-8"));
+    return typeof raw?.version === "string" && raw.version.trim()
+      ? raw.version.trim()
+      : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function normalizeRouterBuildInfo(raw: unknown): RouterBuildInfo | null {
+  if (typeof raw !== "object" || raw === null) return null;
+
+  const candidate = raw as Record<string, unknown>;
+  const baseVersion = candidate.baseVersion;
+  const buildNumber = candidate.buildNumber;
+  const buildSource = candidate.buildSource;
+  const fullVersion = candidate.fullVersion;
+
+  if (
+    typeof baseVersion !== "string" ||
+    typeof buildNumber !== "string" ||
+    (buildSource !== "ci" && buildSource !== "override" && buildSource !== "local") ||
+    typeof fullVersion !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    baseVersion,
+    buildNumber,
+    buildSource,
+    fullVersion,
+  };
+}
+
+function loadRouterBuildInfo(): RouterBuildInfo {
+  const fallbackBaseVersion = packageJsonVersion();
+
+  try {
+    const raw = JSON.parse(readFileSync(buildInfoPath(), "utf-8")) as unknown;
+    const parsed = normalizeRouterBuildInfo(raw);
+    if (parsed) return parsed;
+  } catch {}
+
+  return {
+    baseVersion: fallbackBaseVersion,
+    buildNumber: "dev",
+    buildSource: "local",
+    fullVersion: `${fallbackBaseVersion}+dev`,
+  };
 }
 
 function getDelegationProtocolTemplate(): string {
@@ -1435,6 +1503,8 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
 };
 
 export default ModelRouterPlugin;
+(ModelRouterPlugin as typeof ModelRouterPlugin & { version?: string }).version =
+  routerVersion;
 
 export function buildAgentDefinition(
   name: string,
