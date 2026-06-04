@@ -7,6 +7,7 @@ import {
   createRouterTestEnv,
   loadFixtureConfig,
   readJSONFile,
+  type RouterTestEnvOptions,
   type TestRouterEnv,
 } from "../../helpers/router-test-env.ts";
 
@@ -20,9 +21,9 @@ class RouterWorld {
   systemPrompt = "";
   enforcementOutput = "";
 
-  async load(): Promise<void> {
+  async load(options: RouterTestEnvOptions = {}): Promise<void> {
     this.env?.cleanup();
-    this.env = createRouterTestEnv();
+    this.env = createRouterTestEnv(options);
     invalidateConfigCache();
     this.plugin = (await ModelRouterPlugin({} as never)) as PluginHooks;
   }
@@ -38,6 +39,13 @@ After(function (this: RouterWorld) {
 Given("the router plugin is loaded from the fixture config", async function (this: RouterWorld) {
   await this.load();
 });
+
+Given(
+  "the router plugin is loaded with malformed persisted state",
+  async function (this: RouterWorld) {
+    await this.load({ rawStateContent: "null" });
+  },
+);
 
 When("I run the {string} command", async function (this: RouterWorld, commandText: string) {
   assert.ok(this.plugin, "plugin was not loaded");
@@ -58,9 +66,24 @@ When("I run the {string} command", async function (this: RouterWorld, commandTex
 
 When("I register router agents", async function (this: RouterWorld) {
   assert.ok(this.plugin, "plugin was not loaded");
-  this.registeredConfig = {};
+  this.registeredConfig = {
+    provider: {
+      anthropic: {},
+      openai: {},
+    },
+    enabled_providers: ["anthropic", "openai"],
+  };
   await this.plugin.config(this.registeredConfig);
 });
+
+When(
+  "I register router agents without provider metadata",
+  async function (this: RouterWorld) {
+    assert.ok(this.plugin, "plugin was not loaded");
+    this.registeredConfig = {};
+    await this.plugin.config(this.registeredConfig);
+  },
+);
 
 When(
   "I transform the system prompt for an anthropic orchestrator",
@@ -183,6 +206,14 @@ Then("the registered agents should match the active fixture preset", function (t
     assert.equal(agents[name]?.variant, tier.variant);
     assert.match(String(agents[name]?.prompt), /ANTI-NARRATION/);
     assert.match(String(agents[name]?.prompt), new RegExp(tier.prompt!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+Then("the router commands should be registered", function (this: RouterWorld) {
+  const commands = this.registeredConfig.command as Record<string, unknown>;
+  assert.ok(commands, "commands missing");
+  for (const name of ["tiers", "preset", "budget", "bypass", "annotate-plan"]) {
+    assert.ok(commands[name], `missing command: ${name}`);
   }
 });
 
