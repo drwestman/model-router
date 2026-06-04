@@ -231,7 +231,13 @@ function renderTemplate(
 function normalizeConfiguredPath(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
-  return trimmed.startsWith("file://") ? fileURLToPath(trimmed) : trimmed;
+  if (!trimmed.startsWith("file://")) return trimmed;
+
+  try {
+    return fileURLToPath(trimmed);
+  } catch {
+    return trimmed;
+  }
 }
 
 export function resolveRouterPaths(
@@ -1338,7 +1344,9 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
     // -----------------------------------------------------------------------
     "experimental.text.complete": async (input: any, output: any) => {
       if (bypassed) return;
-      const text = typeof output?.text === "string" ? output.text : "";
+      const safeOutput =
+        typeof output === "object" && output !== null ? output : undefined;
+      const text = typeof safeOutput?.text === "string" ? safeOutput.text : "";
       if (text.length < 20) return;
 
       const found = detectNarration(text);
@@ -1347,13 +1355,19 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
       const quoted = found
         .map((m) => `"${m.slice(0, 60)}${m.length > 60 ? "…" : ""}"`)
         .join(", ");
-      output.text = `${text}\n\n[⚠ narration detected: ${quoted}]`;
+      if (!safeOutput) return;
+
+      safeOutput.text = `${text}\n\n[⚠ narration detected: ${quoted}]`;
     },
 
     // -----------------------------------------------------------------------
     // Register tier agents + commands at load time
     // -----------------------------------------------------------------------
     config: (opencodeConfig: any) => {
+      if (opencodeConfig == null) {
+        return opencodeConfig;
+      }
+
       const startup = loadStartupConfig();
       cfg = startup.cfg;
       activeTiers = startup.activeTiers;

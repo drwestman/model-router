@@ -62,22 +62,24 @@ export function getBaseVersion(packageJson) {
 }
 
 export function resolveBuildNumber(env) {
-  const override = normalizeBuildNumber(env.OPENCODE_MODEL_ROUTER_BUILD_NUMBER);
+  const override = tryNormalizeBuildNumber(
+    env?.OPENCODE_MODEL_ROUTER_BUILD_NUMBER,
+  );
   if (override) {
     return { source: "override", value: override };
   }
 
   const ciCandidates = [
-    env.GITHUB_RUN_NUMBER,
-    env.GITHUB_RUN_ATTEMPT,
-    env.BUILD_NUMBER,
-    env.CI_PIPELINE_IID,
-    env.CI_JOB_ID,
-    env.RUN_NUMBER,
+    env?.GITHUB_RUN_NUMBER,
+    env?.GITHUB_RUN_ATTEMPT,
+    env?.BUILD_NUMBER,
+    env?.CI_PIPELINE_IID,
+    env?.CI_JOB_ID,
+    env?.RUN_NUMBER,
   ];
 
   for (const candidate of ciCandidates) {
-    const normalized = normalizeBuildNumber(candidate);
+    const normalized = tryNormalizeBuildNumber(candidate);
     if (normalized) {
       return { source: "ci", value: normalized };
     }
@@ -99,6 +101,14 @@ export function normalizeBuildNumber(value) {
     );
   }
   return trimmed;
+}
+
+function tryNormalizeBuildNumber(value) {
+  try {
+    return normalizeBuildNumber(value);
+  } catch {
+    return undefined;
+  }
 }
 
 export function formatTimestamp(date) {
