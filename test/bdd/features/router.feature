@@ -15,6 +15,18 @@ Feature: model router behavior
     Given the router plugin is loaded from the fixture config
     When I register router agents
     Then the registered agents should match the active fixture preset
+    And the router commands should be registered
+
+  Scenario: malformed persisted state does not block plugin startup
+    Given the router plugin is loaded with malformed persisted state
+    When I register router agents
+    Then the registered agents should match the active fixture preset
+
+  Scenario: agent registration does not depend on provider metadata
+    Given the router plugin is loaded from the fixture config
+    When I register router agents without provider metadata
+    Then the registered agents should match the active fixture preset
+    And the router commands should be registered
 
   Scenario: system prompt contains the required routing sections
     Given the router plugin is loaded from the fixture config

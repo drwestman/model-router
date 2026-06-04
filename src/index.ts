@@ -1,3 +1,5 @@
+/// <reference path="./opencode-ai-plugin.d.ts" />
+
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
@@ -109,14 +111,29 @@ export function invalidateConfigCache(): void {
 }
 
 function getPluginRoot(): string {
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  return join(__dirname, ".."); // src/ -> plugin root
+  return join(getSourceDir(), ".."); // src/ -> plugin root
 }
 
 function delegationProtocolTemplatePath(): string {
-  return fileURLToPath(
-    new URL("./templates/delegation-protocol.md", import.meta.url),
-  );
+  return join(getSourceDir(), "templates", "delegation-protocol.md");
+}
+
+function getSourceDir(): string {
+  try {
+    return dirname(fileURLToPath(import.meta.url));
+  } catch {
+    const cwd = safeCurrentWorkingDir();
+    return cwd ? join(cwd, "src") : ".";
+  }
+}
+
+function safeCurrentWorkingDir(): string | undefined {
+  try {
+    const cwd = process.cwd();
+    return typeof cwd === "string" && cwd.trim() ? cwd : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function getDelegationProtocolTemplate(): string {
@@ -143,22 +160,41 @@ function renderTemplate(
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => values[key] ?? "");
 }
 
+function normalizeConfiguredPath(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.startsWith("file://") ? fileURLToPath(trimmed) : trimmed;
+}
+
 export function resolveRouterPaths(
   env: NodeJS.ProcessEnv = process.env,
 ): RouterPaths {
-  const configuredConfigPath = env.OPENCODE_MODEL_ROUTER_CONFIG_PATH?.trim();
-  const configuredStatePath = env.OPENCODE_MODEL_ROUTER_STATE_PATH?.trim();
+  const configuredConfigPath = normalizeConfiguredPath(
+    env.OPENCODE_MODEL_ROUTER_CONFIG_PATH,
+  );
+  const configuredStatePath = normalizeConfiguredPath(
+    env.OPENCODE_MODEL_ROUTER_STATE_PATH,
+  );
+  const pluginConfigPath = join(getPluginRoot(), "tiers.json");
+  const configPath = configuredConfigPath || pluginConfigPath;
+  const statePath =
+    configuredStatePath ||
+    join(
+      homedir(),
+      ".config",
+      "opencode",
+      "opencode-model-router.state.json",
+    );
+
+  if (env.MODEL_ROUTER_DEBUG === "1") {
+    console.warn(
+      `[model-router] resolveRouterPaths configPath=${configPath} statePath=${statePath}`,
+    );
+  }
 
   return {
-    configPath: configuredConfigPath || join(getPluginRoot(), "tiers.json"),
-    statePath:
-      configuredStatePath ||
-      join(
-        homedir(),
-        ".config",
-        "opencode",
-        "opencode-model-router.state.json",
-      ),
+    configPath,
+    statePath,
   };
 }
 
@@ -174,7 +210,7 @@ export function resolvePresetName(
   cfg: RouterConfig,
   requestedPreset: string,
 ): string | undefined {
-  if (cfg.presets[requestedPreset]) {
+  if (cfg.presets?.[requestedPreset]) {
     return requestedPreset;
   }
 
@@ -349,26 +385,53 @@ export function applyPersistedState(
   cfg: RouterConfig,
   state: RouterState,
 ): RouterConfig {
+  const normalizedState = normalizeRouterState(state);
   const nextCfg: RouterConfig = { ...cfg };
 
-  if (state.activePreset) {
-    const resolved = resolvePresetName(cfg, state.activePreset);
+  if (normalizedState.activePreset) {
+    const resolved = resolvePresetName(cfg, normalizedState.activePreset);
     if (resolved) {
       nextCfg.activePreset = resolved;
     }
   }
 
-  if (state.activeMode && cfg.modes?.[state.activeMode]) {
-    nextCfg.activeMode = state.activeMode;
+  if (normalizedState.activeMode && cfg.modes?.[normalizedState.activeMode]) {
+    nextCfg.activeMode = normalizedState.activeMode;
   }
 
   return nextCfg;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype ||
+      Object.getPrototypeOf(value) === null)
+  );
+}
+
+export function normalizeRouterState(raw: unknown): RouterState {
+  if (!isPlainObject(raw)) {
+    return {};
+  }
+
+  const state: RouterState = {};
+  if (typeof raw.activePreset === "string" && raw.activePreset.trim()) {
+    state.activePreset = raw.activePreset;
+  }
+  if (typeof raw.activeMode === "string" && raw.activeMode.trim()) {
+    state.activeMode = raw.activeMode;
+  }
+
+  return state;
+}
+
 export function readStateFile(filePath: string): RouterState {
   try {
     if (existsSync(filePath)) {
-      return JSON.parse(readFileSync(filePath, "utf-8")) as RouterState;
+      return normalizeRouterState(JSON.parse(readFileSync(filePath, "utf-8")));
     }
   } catch {
     // ignore
@@ -380,7 +443,7 @@ export function writeStateFile(
   filePath: string,
   patch: Partial<RouterState>,
 ): void {
-  const state = { ...readStateFile(filePath), ...patch };
+  const state = normalizeRouterState({ ...readStateFile(filePath), ...patch });
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
 }
@@ -408,6 +471,99 @@ function loadConfig(): RouterConfig {
   _cachedConfigKey = cacheKey;
   _configDirty = false;
   return cfg;
+}
+
+function getFallbackConfig(): RouterConfig {
+  return {
+    activePreset: "fallback",
+    activeMode: "normal",
+    presets: {},
+    rules: [],
+    defaultTier: "fast",
+  };
+}
+
+function safeLoadConfig(): RouterConfig {
+  try {
+    return loadConfig();
+  } catch (error) {
+    console.warn(
+      `[model-router] using fallback config after load failure: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return getFallbackConfig();
+  }
+}
+
+interface StartupConfig {
+  cfg: RouterConfig;
+  activeTiers: Preset;
+  paths: RouterPaths;
+}
+
+function loadStartupConfig(): StartupConfig {
+  const cfg = safeLoadConfig();
+  let paths: RouterPaths;
+
+  try {
+    paths = resolveRouterPaths();
+  } catch (error) {
+    console.warn(
+      `[model-router] failed to resolve startup paths: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    paths = {
+      configPath: "unavailable",
+      statePath: "unavailable",
+    };
+  }
+
+  return {
+    cfg,
+    activeTiers: getActiveTiers(cfg),
+    paths,
+  };
+}
+
+function emitStartupDiagnostics(startup: StartupConfig): void {
+  console.warn("[model-router] startup", {
+    ...startup.paths,
+    activePreset: startup.cfg.activePreset,
+    presetKeys: Object.keys(startup.cfg.presets ?? {}),
+    activeTierKeys: Object.keys(startup.activeTiers ?? {}),
+  });
+}
+
+function warnIfProviderMetadataMissing(
+  opencodeConfig: Record<string, any>,
+  cfg: RouterConfig,
+  tiers: Preset,
+): void {
+  const firstTier = Object.values(tiers ?? {})[0];
+  const activeProvider =
+    typeof firstTier?.model === "string"
+      ? firstTier.model.split("/")[0]
+      : undefined;
+
+  if (!activeProvider) {
+    return;
+  }
+
+  const providerConfig = opencodeConfig.provider ?? {};
+  const enabledProviders = Array.isArray(opencodeConfig.enabled_providers)
+    ? opencodeConfig.enabled_providers
+    : [];
+  const providerAvailable =
+    Boolean(providerConfig[activeProvider]) ||
+    enabledProviders.includes(activeProvider);
+
+  if (!providerAvailable) {
+    console.warn(
+      `[model-router] provider metadata for '${activeProvider}' is unavailable during config(); router agents still registered for preset '${getActivePresetName(cfg)}'`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -451,8 +607,39 @@ function saveActiveMode(modeName: string): void {
   invalidateConfigCache();
 }
 
-function getActiveTiers(cfg: RouterConfig): Preset {
-  return cfg.presets[cfg.activePreset] ?? Object.values(cfg.presets)[0]!;
+function getActiveTiers(cfg: RouterConfig | null | undefined): Preset {
+  if (!cfg || typeof cfg !== "object" || !("presets" in cfg)) {
+    return {};
+  }
+
+  const presets = cfg.presets ?? {};
+  if (!presets || Object.keys(presets).length === 0) {
+    return {};
+  }
+
+  const activePreset =
+    typeof cfg.activePreset === "string" && presets[cfg.activePreset]
+      ? cfg.activePreset
+      : Object.keys(presets)[0];
+
+  return activePreset ? presets[activePreset] ?? {} : {};
+}
+
+function getActivePresetName(cfg: RouterConfig | null | undefined): string {
+  if (!cfg || typeof cfg !== "object") {
+    return "unknown";
+  }
+
+  if (typeof cfg.activePreset === "string" && cfg.activePreset.trim()) {
+    return cfg.activePreset;
+  }
+
+  const presets = cfg.presets;
+  if (presets && Object.keys(presets).length > 0) {
+    return Object.keys(presets)[0] ?? "unknown";
+  }
+
+  return "unknown";
 }
 
 // ---------------------------------------------------------------------------
@@ -499,15 +686,16 @@ function buildFallbackInstructions(cfg: RouterConfig): string {
   const fb = cfg.fallback;
   if (!fb) return "";
 
-  const presetMap = fb.presets?.[cfg.activePreset];
+  const activePreset = getActivePresetName(cfg);
+  const presetMap = fb.presets?.[activePreset];
   const map =
     presetMap && Object.keys(presetMap).length > 0 ? presetMap : fb.global;
   if (!map) return "";
 
-  const chains = Object.entries(map).flatMap(([provider, presetOrder]) => {
+  const chains = Object.entries(map ?? {}).flatMap(([provider, presetOrder]) => {
     if (!Array.isArray(presetOrder)) return [];
     const valid = presetOrder.filter(
-      (p) => p !== cfg.activePreset && Boolean(cfg.presets[p]),
+      (p) => p !== activePreset && Boolean(cfg.presets[p]),
     );
     return valid.length > 0 ? [`${provider}→${valid.join("→")}`] : [];
   });
@@ -524,7 +712,7 @@ function buildTaskTaxonomy(cfg: RouterConfig): string {
   if (!cfg.taskPatterns || Object.keys(cfg.taskPatterns).length === 0)
     return "";
   const lines = ["R:"];
-  for (const [tier, patterns] of Object.entries(cfg.taskPatterns)) {
+  for (const [tier, patterns] of Object.entries(cfg.taskPatterns ?? {})) {
     if (Array.isArray(patterns) && patterns.length > 0) {
       lines.push(`@${tier}→${patterns.join("/")}`);
     }
@@ -544,7 +732,7 @@ function buildDecomposeHint(cfg: RouterConfig): string {
   if (mode?.overrideRules?.length) return "";
 
   const tiers = getActiveTiers(cfg);
-  const entries = Object.entries(tiers);
+  const entries = Object.entries(tiers ?? {});
   if (entries.length < 2) return "";
 
   // Sort by costRatio ascending to find cheapest (explore) and next (execute) tiers
@@ -566,7 +754,7 @@ export function buildDelegationProtocol(cfg: RouterConfig): string {
   const tiers = getActiveTiers(cfg);
 
   // Compact tier summary: @name=model/variant(costRatio)
-  const tierLine = Object.entries(tiers)
+  const tierLine = Object.entries(tiers ?? {})
     .map(([name, t]) => {
       const short = t.model.split("/").pop() ?? t.model;
       const v = t.variant ? `/${t.variant}` : "";
@@ -583,13 +771,13 @@ export function buildDelegationProtocol(cfg: RouterConfig): string {
 
   const effectiveRules = mode?.overrideRules?.length
     ? mode.overrideRules
-    : cfg.rules;
+    : cfg.rules ?? [];
   const rulesLine = effectiveRules.map((r, i) => `${i + 1}.${r}`).join(" ");
 
   const fallback = buildFallbackInstructions(cfg);
 
   return renderTemplate(getDelegationProtocolTemplate(), {
-    activePreset: cfg.activePreset,
+    activePreset: getActivePresetName(cfg),
     tierLine,
     modeSuffix,
     taxonomyBlock: taxonomy ? `${taxonomy}\n\n` : "",
@@ -607,10 +795,10 @@ function buildTiersOutput(cfg: RouterConfig): string {
   const tiers = getActiveTiers(cfg);
   const lines: string[] = [
     `# Model Delegation Tiers`,
-    `Active preset: **${cfg.activePreset}**\n`,
+    `Active preset: **${getActivePresetName(cfg)}**\n`,
   ];
 
-  for (const [name, tier] of Object.entries(tiers)) {
+  for (const [name, tier] of Object.entries(tiers ?? {})) {
     const thinkingStr = tier.thinking
       ? ` | thinking: ${tier.thinking.budgetTokens} tokens`
       : tier.reasoning
@@ -623,7 +811,9 @@ function buildTiersOutput(cfg: RouterConfig): string {
   }
 
   lines.push("## Delegation Rules");
-  cfg.rules.forEach((r) => lines.push(`- ${r}`));
+  for (const r of cfg.rules ?? []) {
+    lines.push(`- ${r}`);
+  }
   lines.push(`\nDefault tier: @${cfg.defaultTier}`);
   lines.push(`\nAvailable presets: ${Object.keys(cfg.presets).join(", ")}`);
   lines.push(`Switch with: \`/preset <name>\``);
@@ -636,19 +826,23 @@ function buildTiersOutput(cfg: RouterConfig): string {
 // /budget command output
 // ---------------------------------------------------------------------------
 
-export function buildBudgetOutput(cfg: RouterConfig, args: string): string {
+function normalizeCommandArgs(args: unknown): string {
+  return typeof args === "string" ? args : "";
+}
+
+export function buildBudgetOutput(cfg: RouterConfig, args: unknown): string {
   const modes = cfg.modes;
   if (!modes || Object.keys(modes).length === 0) {
     return 'No modes configured in tiers.json. Add a "modes" section to enable budget mode.';
   }
 
-  const requested = args.trim().toLowerCase();
+  const requested = normalizeCommandArgs(args).trim().toLowerCase();
   const currentMode = cfg.activeMode || "normal";
 
   // No args: show current mode and available modes
   if (!requested) {
     const lines = ["# Routing Modes\n"];
-    for (const [name, mode] of Object.entries(modes)) {
+    for (const [name, mode] of Object.entries(modes ?? {})) {
       const active = name === currentMode ? " <- active" : "";
       lines.push(
         `- **${name}**${active}: ${mode.description} (default tier: @${mode.defaultTier})`,
@@ -682,15 +876,15 @@ export function buildBudgetOutput(cfg: RouterConfig, args: string): string {
 // /preset command output
 // ---------------------------------------------------------------------------
 
-export function buildPresetOutput(cfg: RouterConfig, args: string): string {
-  const requestedPreset = args.trim();
+export function buildPresetOutput(cfg: RouterConfig, args: unknown): string {
+  const requestedPreset = normalizeCommandArgs(args).trim();
 
   // No args: show available presets
   if (!requestedPreset) {
     const lines = ["# Available Presets\n"];
-    for (const [name, tiers] of Object.entries(cfg.presets)) {
-      const active = name === cfg.activePreset ? " <- active" : "";
-      const models = Object.entries(tiers)
+    for (const [name, tiers] of Object.entries(cfg.presets ?? {})) {
+      const active = name === getActivePresetName(cfg) ? " <- active" : "";
+      const models = Object.entries(tiers ?? {})
         .map(([tier, t]) => `${tier}: ${t.model.split("/").pop()}`)
         .join(", ");
       lines.push(`- **${name}**${active}: ${models}`);
@@ -705,7 +899,7 @@ export function buildPresetOutput(cfg: RouterConfig, args: string): string {
     saveActivePreset(resolvedPreset);
     cfg.activePreset = resolvedPreset;
     const tiers = cfg.presets[resolvedPreset]!;
-    const models = Object.entries(tiers)
+    const models = Object.entries(tiers ?? {})
       .map(([tier, t]) => `  @${tier} -> ${t.model}`)
       .join("\n");
     return [
@@ -950,8 +1144,8 @@ const NARRATION_PATTERNS: RegExp[] = [
 ];
 
 /** Returns matched narration phrases, deduped and capped. Empty array = no narration detected. */
-export function detectNarration(text: string): string[] {
-  if (text.length < 20) return [];
+export function detectNarration(text: unknown): string[] {
+  if (typeof text !== "string" || text.length < 20) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const pattern of NARRATION_PATTERNS) {
@@ -972,9 +1166,9 @@ export function detectNarration(text: string): string[] {
 // Plugin
 // ---------------------------------------------------------------------------
 
-const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
-  let cfg = loadConfig();
-  const activeTiers = getActiveTiers(cfg);
+const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
+  let cfg = getFallbackConfig();
+  let activeTiers = getActiveTiers(cfg);
 
   // Track subagent sessions so we can skip delegation protocol injection.
   // Populated by chat.params (which has the agent name) before system.transform fires.
@@ -1076,8 +1270,8 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // -----------------------------------------------------------------------
     "experimental.text.complete": async (input: any, output: any) => {
       if (bypassed) return;
-      const text = output?.text;
-      if (typeof text !== "string" || text.length < 20) return;
+      const text = typeof output?.text === "string" ? output.text : "";
+      if (text.length < 20) return;
 
       const found = detectNarration(text);
       if (found.length === 0) return;
@@ -1091,8 +1285,13 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
     // -----------------------------------------------------------------------
     // Register tier agents + commands at load time
     // -----------------------------------------------------------------------
-    config: async (opencodeConfig: any) => {
+    config: (opencodeConfig: any) => {
+      const startup = loadStartupConfig();
+      cfg = startup.cfg;
+      activeTiers = startup.activeTiers;
+      emitStartupDiagnostics(startup);
       registerActiveTierAgents(opencodeConfig, cfg, activeTiers);
+      warnIfProviderMetadataMissing(opencodeConfig, cfg, activeTiers);
 
       // Register commands
       opencodeConfig.command ??= {};
@@ -1142,6 +1341,8 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
         description:
           "Annotate a plan with [tier:fast/medium/heavy] delegation tags",
       };
+
+      return opencodeConfig;
     },
 
     // -----------------------------------------------------------------------
@@ -1202,7 +1403,7 @@ const ModelRouterPlugin: Plugin = async (_ctx: PluginInput) => {
       }
 
       if (input.command === "bypass") {
-        const arg = (input.arguments ?? "").trim().toLowerCase();
+        const arg = normalizeCommandArgs(input.arguments).trim().toLowerCase();
         if (arg === "on") {
           bypassed = true;
         } else if (arg === "off") {
@@ -1239,7 +1440,14 @@ export function buildAgentDefinition(
   name: string,
   tier: TierConfig,
   cfg: RouterConfig,
-): Record<string, unknown> {
+): Record<string, unknown> | null {
+  if (!tier || typeof tier !== "object") {
+    console.warn(
+      `[model-router] skipping invalid tier '${name}' in active preset '${getActivePresetName(cfg)}'`,
+    );
+    return null;
+  }
+
   const resolvedPrompt = tier.prompt ?? cfg.tierPrompts?.[name];
   const claudePrefix = isClaudeModel(tier.model)
     ? [CLAUDE_TIER_PREFIX[name], CLAUDE_ANTI_NARRATION]
@@ -1279,7 +1487,15 @@ export function registerActiveTierAgents(
 ): void {
   opencodeConfig.agent ??= {};
 
-  for (const [name, tier] of Object.entries(tiers)) {
-    opencodeConfig.agent[name] = buildAgentDefinition(name, tier, cfg);
+  for (const [name, tier] of Object.entries(tiers ?? {})) {
+    if (typeof tier !== "object" || tier === null) {
+      console.warn(
+        `[model-router] skipping invalid tier '${name}' in active preset '${getActivePresetName(cfg)}'`,
+      );
+      continue;
+    }
+    const agentDef = buildAgentDefinition(name, tier, cfg);
+    if (!agentDef) continue;
+    opencodeConfig.agent[name] = agentDef;
   }
 }
