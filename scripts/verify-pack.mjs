@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const cacheDir = mkdtempSync(join(tmpdir(), "opencode-model-router-npm-cache-"));
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const allowedFiles = [
   "LICENSE",
   "README.md",
@@ -20,7 +21,7 @@ const allowedFiles = [
 
 try {
   const output = execFileSync(
-    "npm",
+    npmCommand,
     ["--cache", cacheDir, "pack", "--dry-run", "--json"],
     {
       cwd: rootDir,
