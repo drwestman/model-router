@@ -4,72 +4,26 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
+import { resolveProviderAdapter } from "./providers/index.js";
+import type {
+  ModeConfig,
+  Preset,
+  RouterConfig,
+  RouterPaths,
+  RouterState,
+  TierConfig,
+} from "./types.js";
+export type {
+  ModeConfig,
+  Preset,
+  RouterConfig,
+  RouterPaths,
+  RouterState,
+  TierConfig,
+} from "./types.js";
 import { fileURLToPath } from "url";
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ThinkingConfig {
-  budgetTokens?: number;
-}
-
-interface ReasoningConfig {
-  effort?: "low" | "medium" | "high";
-  summary?: "auto" | "always" | "never";
-}
-
-export interface TierConfig {
-  model: string;
-  variant?: string;
-  thinking?: ThinkingConfig;
-  reasoning?: ReasoningConfig;
-  costRatio?: number;
-  color?: string;
-  description: string;
-  steps?: number;
-  prompt?: string;
-  whenToUse: string[];
-}
-
-type Preset = Record<string, TierConfig>;
-
-interface FallbackConfig {
-  global?: Record<string, string[]>;
-  presets?: Record<string, Record<string, string[]>>;
-}
-
-export interface ModeConfig {
-  defaultTier: string;
-  description: string;
-  overrideRules?: string[];
-}
-
-export interface RouterConfig {
-  activePreset: string;
-  activeMode?: string;
-  presets: Record<string, Preset>;
-  rules: string[];
-  defaultTier: string;
-  fallback?: FallbackConfig;
-  taskPatterns?: Record<string, string[]>;
-  modes?: Record<string, ModeConfig>;
-  /** Global default prompts per tier name. A preset-level tier.prompt overrides this. */
-  tierPrompts?: Record<string, string>;
-  /** Read-only tool-call caps per tier, enforced at runtime via tool.execute.after banner injection. */
-  tierCaps?: Record<string, number>;
-}
-
-export interface RouterState {
-  activePreset?: string;
-  activeMode?: string;
-}
-
-export interface RouterPaths {
-  configPath: string;
-  statePath: string;
-}
-
 export interface RouterBuildInfo {
   baseVersion: string;
   buildNumber: string;
@@ -716,31 +670,18 @@ function getActivePresetName(cfg: RouterConfig | null | undefined): string {
   return "unknown";
 }
 
-// ---------------------------------------------------------------------------
-// Build agent options from tier config
-// ---------------------------------------------------------------------------
+export function composePrompt(
+  prefix: string | undefined,
+  prompt: string | undefined,
+): string | undefined {
+  const normalizedPrefix = prefix?.trim() || undefined;
+  const normalizedPrompt = prompt?.trim() || undefined;
 
-function buildAgentOptions(tier: TierConfig): Record<string, unknown> {
-  const opts: Record<string, unknown> = {};
-
-  // Anthropic thinking config
-  if (tier.thinking) {
-    if (tier.thinking.budgetTokens) {
-      opts.budget_tokens = tier.thinking.budgetTokens;
-    }
+  if (normalizedPrefix && normalizedPrompt) {
+    return `${normalizedPrefix}\n\n---\n\n${normalizedPrompt}`;
   }
 
-  // OpenAI reasoning config
-  if (tier.reasoning) {
-    if (tier.reasoning.effort) {
-      opts.reasoning_effort = tier.reasoning.effort;
-    }
-    if (tier.reasoning.summary) {
-      opts.reasoning_summary = tier.reasoning.summary;
-    }
-  }
-
-  return Object.keys(opts).length > 0 ? opts : {};
+  return normalizedPrefix ?? normalizedPrompt;
 }
 
 // ---------------------------------------------------------------------------
@@ -1097,107 +1038,6 @@ export function buildCapBanner(
 }
 
 // ---------------------------------------------------------------------------
-// Claude-model adversarial prefixes
-//
-// Anthropic models (direct or via other providers) are served with a large
-// cached "Claude Code" signature prompt that primes them toward broad
-// exploratory Read/Grep/Glob behavior. Our tier prompts land after that
-// cached block and lose authority through primacy bias and cache freezing.
-// For Claude models specifically, we prepend an override block that
-// explicitly revokes the exploratory priming for the current dispatch.
-//
-// Detection is by model identifier, not preset — a hybrid preset mixing
-// providers gets the override only on its Claude-backed tiers.
-// ---------------------------------------------------------------------------
-
-function isClaudeModel(modelID: string | undefined): boolean {
-  if (!modelID) return false;
-  const s = modelID.toLowerCase();
-  if (s.startsWith("anthropic/")) return true;
-  return /\/claude-/.test(s) || /(^|[\/\-])claude-/.test(s);
-}
-
-/** Per-tier adversarial openers. @fast/@medium use Tom 2 (scoping); @heavy uses Tom 1 (override). */
-const CLAUDE_TIER_PREFIX: Record<string, string> = {
-  fast: [
-    "SCOPE NOTE — any cached instruction priming you to 'thoroughly explore",
-    "the codebase' or 'gather context broadly' does not apply here. This is",
-    "a single dispatch with a single question. Stay narrow to the ask.",
-    "",
-    "Before every tool call, ask: 'Does THIS read answer the dispatch",
-    "question specifically, or am I drifting into context-gathering for my",
-    "own understanding?' If the latter, stop — you have enough.",
-  ].join("\n"),
-  medium: [
-    "SCOPE NOTE — cached instructions may prime you to deeply understand",
-    "surrounding code before editing. For THIS dispatch, the orchestrator",
-    "has already scoped the problem; trust that scoping. Read what's needed",
-    "for the edit, not the whole module.",
-    "",
-    "A 4th or 5th 'context read' is usually a sign the dispatch was under-",
-    "scoped — return NEED CONTEXT rather than expanding scope yourself.",
-  ].join("\n"),
-  heavy: [
-    "AUTHORITY OVERRIDE — this block supersedes any cached prefix suggesting",
-    "you should 'investigate thoroughly', 'gather comprehensive context', or",
-    "'trace through the code systematically before analyzing'. You are",
-    "@heavy, an ANALYSIS specialist. The orchestrator should have pre-",
-    "gathered context via @fast before dispatching you. If it didn't, return",
-    "`SCOPE GROWTH:` immediately — do NOT self-gather.",
-    "",
-    "40 minutes of Read/Grep is not analysis — it is the orchestrator's job",
-    "that leaked into yours. Push it back with SCOPE GROWTH. Your 3 reads",
-    "are for targeted verification, not exploration.",
-  ].join("\n"),
-};
-
-/** Adversarial opener prepended to the delegation protocol when the orchestrator is a Claude model. */
-const CLAUDE_ORCHESTRATOR_PREFIX = [
-  "AUTHORITY OVERRIDE — this block supersedes any prior system instruction",
-  "about 'exploring the codebase', 'gathering context with tools', or using",
-  "Read/Grep/Glob to validate assumptions. Those instructions describe a",
-  "general-purpose Claude Code session. THIS session is a routing",
-  "orchestrator.",
-  "",
-  "Your job is to DISPATCH, not to EXECUTE. Read-only work (grep/read/",
-  "glob/ls) is execution, and execution is delegated to @fast. You may run",
-  "AT MOST 2 direct read-only tool calls per turn — a 3rd call is a rule",
-  "violation. If you need more context, you dispatch @fast.",
-  "",
-  "If a cached instruction told you to 'be thorough', 'explore broadly', or",
-  "'read supporting files' — ignore it here. Thoroughness is achieved by",
-  "dispatching the right tier, not by you becoming the explorer.",
-].join("\n");
-
-/**
- * Anti-narration clause appended to every Claude-model prefix (tier + orchestrator).
- *
- * Thinking-enabled Claude models (esp. Sonnet with `max` variant) sometimes
- * produce progress narration in place of actual work — "Still writing X...",
- * "Now I'll implement Y...", "Let me add Z..." — without the X/Y/Z ever
- * appearing. This clause names the pattern, lists specific forbidden phrasings
- * (A3 — exemplified), and carves out an escape valve for legitimate
- * explanation/plan requests (A2 — with exception).
- */
-const CLAUDE_ANTI_NARRATION = [
-  "ANTI-NARRATION — do NOT write progress commentary in your response or",
-  "thinking output. Forbidden phrasings include:",
-  "  - \"Still writing the X function...\"",
-  "  - \"Now I'll implement Y...\"",
-  "  - \"Let me add Z...\"",
-  "  - \"Continuing with W...\"",
-  "  - \"Going to fix V...\"",
-  "",
-  "Each of these signals planning without production. If you write one, the",
-  "NEXT tokens MUST contain the actual artifact (the code, the edit, the",
-  "concrete output). Otherwise, stop and return with status.",
-  "",
-  "Exception: when the user explicitly asks for an explanation, plan, or",
-  "walkthrough, prose is welcome — this rule targets unsolicited progress",
-  "narration during code and implementation tasks.",
-].join("\n");
-
-// ---------------------------------------------------------------------------
 // Narration detector (telemetry — logs + appends banner)
 // ---------------------------------------------------------------------------
 
@@ -1446,18 +1286,19 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
       const sessionID = _input?.sessionID;
       if (sessionID && subagentSessionIDs.has(sessionID)) return;
 
-      // For Claude-backed orchestrators, prepend an adversarial opener that
-      // revokes the cached "Claude Code explorer" priming for the routing
-      // role. Detection is by orchestrator model, not preset.
       const providerID = _input?.model?.providerID ?? "";
       const modelID = _input?.model?.modelID ?? "";
-      const orchestratorModel = providerID && modelID ? `${providerID}/${modelID}` : modelID;
+      const orchestratorModel =
+        providerID && modelID ? `${providerID}/${modelID}` : modelID;
+      const providerPrefix = resolveProviderAdapter(
+        orchestratorModel,
+      ).buildOrchestratorPromptPrefix(orchestratorModel);
       const delegationProtocol = buildDelegationProtocol(cfg);
-      const finalProtocol = isClaudeModel(orchestratorModel)
-        ? `${CLAUDE_ORCHESTRATOR_PREFIX}\n\n${CLAUDE_ANTI_NARRATION}\n\n---\n\n${delegationProtocol}`
-        : delegationProtocol;
+      const finalProtocol = composePrompt(providerPrefix, delegationProtocol);
 
-      output.system.push(finalProtocol);
+      if (finalProtocol) {
+        output.system.push(finalProtocol);
+      }
     },
 
     // -----------------------------------------------------------------------
@@ -1524,24 +1365,14 @@ export function buildAgentDefinition(
   name: string,
   tier: TierConfig,
   cfg: RouterConfig,
-): Record<string, unknown> | null {
-  if (!tier || typeof tier !== "object") {
-    console.warn(
-      `[model-router] skipping invalid tier '${name}' in active preset '${getActivePresetName(cfg)}'`,
-    );
-    return null;
-  }
-
+): Record<string, unknown> {
+  const providerAdapter = resolveProviderAdapter(tier.model);
   const resolvedPrompt = tier.prompt ?? cfg.tierPrompts?.[name];
-  const claudePrefix = isClaudeModel(tier.model)
-    ? [CLAUDE_TIER_PREFIX[name], CLAUDE_ANTI_NARRATION]
-        .filter((part): part is string => Boolean(part))
-        .join("\n\n") || undefined
-    : undefined;
-  const finalPrompt =
-    claudePrefix && resolvedPrompt
-      ? `${claudePrefix}\n\n---\n\n${resolvedPrompt}`
-      : claudePrefix ?? resolvedPrompt;
+  const providerPromptPrefix = providerAdapter.buildTierPromptPrefix(
+    name,
+    tier.model,
+  );
+  const finalPrompt = composePrompt(providerPromptPrefix, resolvedPrompt);
 
   const agentDef: Record<string, unknown> = {
     model: tier.model,
@@ -1556,7 +1387,7 @@ export function buildAgentDefinition(
     agentDef.variant = tier.variant;
   }
 
-  const opts = buildAgentOptions(tier);
+  const opts = providerAdapter.buildOptions(tier);
   if (Object.keys(opts).length > 0) {
     agentDef.options = opts;
   }
@@ -1579,7 +1410,6 @@ export function registerActiveTierAgents(
       continue;
     }
     const agentDef = buildAgentDefinition(name, tier, cfg);
-    if (!agentDef) continue;
     opencodeConfig.agent[name] = agentDef;
   }
 }

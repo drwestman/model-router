@@ -22,6 +22,7 @@ import {
   resolveRouterPaths,
   writeStateFile,
 } from "../../src/index.ts";
+import { isClaudeModel } from "../../src/providers/claude.ts";
 import { createRouterTestEnv, readJSONFile } from "../helpers/router-test-env.ts";
 
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -313,6 +314,44 @@ test("registerActiveTierAgents skips invalid tier entries without crashing", () 
   }
 });
 
+test("isClaudeModel matches proxied Claude identifiers with dot separators", () => {
+  assert.equal(isClaudeModel("anthropic/claude-sonnet-4-6"), true);
+  assert.equal(isClaudeModel("github-copilot/claude-sonnet-4-6"), true);
+  assert.equal(isClaudeModel("bedrock/us.anthropic.claude-3-5-sonnet-20241022-v2:0"), true);
+  assert.equal(isClaudeModel("openai/gpt-5.4-fast"), false);
+});
+
+test("buildAgentDefinition applies Claude prefix for proxied Claude models regardless of provider", () => {
+  const env = createRouterTestEnv();
+
+  try {
+    const cfg = loadConfigFromPaths({
+      configPath: env.configPath,
+      statePath: env.statePath,
+    });
+    const agent = buildAgentDefinition(
+      "medium",
+      {
+        model: "openai/claude-sonnet-4-6",
+        variant: "high",
+        description: "Custom proxied Claude tier",
+        costRatio: 5,
+        color: "blue",
+        steps: 4,
+        whenToUse: ["implement"],
+        prompt: "Implement changes and verify them.",
+      } as never,
+      cfg,
+    ) as Record<string, unknown>;
+
+    const prompt = String(agent.prompt);
+    assert.match(prompt, /ANTI-NARRATION/);
+    assert.match(prompt, /Implement changes and verify them\./);
+  } finally {
+    env.cleanup();
+  }
+});
+
 test("plugin config registers agents and commands without provider metadata", async () => {
   const env = createRouterTestEnv();
 
@@ -335,7 +374,6 @@ test("plugin config registers agents and commands without provider metadata", as
     invalidateConfigCache();
   }
 });
-
 test("extractDispatchText tolerates non-array parts", () => {
   const output = { parts: "bad" };
 

@@ -35,6 +35,9 @@ If the orchestrator is already running on Opus, the rule `self∈opus→never→
 **Multi-provider support with automatic fallback.**
 Five presets out of the box: Anthropic, OpenAI, GitHub Copilot, Google, Hybrid. Switch with `/preset`. If a provider fails, the fallback chain tries the next one automatically.
 
+**Provider adapters by model prefix.**
+Provider-specific behavior is resolved from each tier's `model` prefix (`anthropic/*`, `openai/*`, `google/*`, `github-copilot/*`, or unknown) rather than from the preset name. Mixed presets keep the right thinking/reasoning/prompt behavior without duplicating config outside `tiers.json`.
+
 **Plan annotation for long tasks.**
 `/annotate-plan` reads a markdown plan and tags each step with `[tier:fast]`, `[tier:medium]`, or `[tier:heavy]` — removing all routing ambiguity from multi-step workflows.
 
@@ -267,10 +270,13 @@ npm --cache /tmp/opencode-model-router-npm-cache pack --dry-run
 
 ## Testing
 
-Run all tests:
+This repo does not define npm build/test scripts. For local changes, run the lightest targeted checks practical for the files you touched.
+
+For this provider-adapter refactor, a minimal syntax/consistency pass is:
 
 ```bash
-npm test
+npx tsc --noEmit --module nodenext --moduleResolution nodenext --target es2022 src/index.ts src/types.ts src/providers/*.ts
+git diff --check
 ```
 
 Run just the small helper/unit tests:
@@ -297,6 +303,45 @@ npm run test:bdd
 ## Configuration
 
 For npm-installed plugins, the default configuration is the package's bundled `tiers.json`. A `tiers.json` in the current working directory is ignored unless you explicitly set `OPENCODE_MODEL_ROUTER_CONFIG_PATH`. Persisted preset/mode state is stored separately in `~/.config/opencode/opencode-model-router.state.json`, or `OPENCODE_MODEL_ROUTER_STATE_PATH` if you override it.
+
+## Provider adapters
+
+Provider modules are behavior adapters only. They do **not** duplicate preset data, model lists, or routing rules from `tiers.json`. The router selects an adapter from each tier's `model` prefix, so provider behavior remains correct even inside mixed presets.
+
+### BDD-style behavior scenarios
+
+**Scenario: Anthropic tier**
+- **Given** `model: "anthropic/claude-sonnet-4-6"` and `thinking.budgetTokens`
+- **When** the router registers the tier
+- **Then** it maps `thinking.budgetTokens` to `options.budget_tokens`
+- **And** it prepends the Claude scope/anti-narration prefix to that tier's prompt
+- **And** a Claude orchestrator gets the Claude orchestrator override block
+
+**Scenario: OpenAI tier**
+- **Given** `model: "openai/gpt-5.4-fast"` and a `reasoning` block
+- **When** the router registers the tier
+- **Then** it maps `reasoning.effort` and `reasoning.summary` to OpenAI option keys
+- **And** it does not add Claude-specific prompt guards
+
+**Scenario: Gemini tier**
+- **Given** `model: "google/gemini-2.5-pro"`
+- **When** the router registers the tier
+- **Then** it uses the Google adapter
+- **And** it leaves provider options and prompt prefixes unchanged unless `tier.prompt` or `tierPrompts` supplies them
+
+**Scenario: Hybrid preset**
+- **Given** a preset mixing `firepass/*`, `openai/*`, and `anthropic/*`
+- **When** the router registers the active tiers
+- **Then** each tier resolves its adapter from its own `model` prefix
+- **And** the preset name does not control provider behavior
+- **And** only the Claude-backed tier gets the Claude prompt safeguards
+
+**Scenario: Unknown provider**
+- **Given** `model: "bedrock/us.anthropic.claude-3-5-sonnet-..."` or any future provider prefix
+- **When** no named adapter matches the prefix
+- **Then** the router falls back to the unknown-provider adapter
+- **And** Claude-looking model IDs still get Claude guardrails
+- **And** non-Claude unknown providers pass through unchanged
 
 ### Presets
 
@@ -535,9 +580,11 @@ Each tier (`@fast`, `@medium`, `@heavy`) has a system prompt that describes its 
 
 **Resolution order per tier:**
 
-1. If the preset's tier defines `"prompt": "..."` inline → use it (per-tier override).
-2. Otherwise → fall back to `tierPrompts[<tierName>]`.
-3. If neither is set → the tier registers without a system prompt.
+1. Resolve the provider adapter from the tier's `model` prefix.
+2. If the preset's tier defines `"prompt": "..."` inline → use it as the prompt body.
+3. Otherwise → fall back to `tierPrompts[<tierName>]`.
+4. If the provider adapter returns a provider prefix, prepend it to the prompt body with `---` as a separator.
+5. If neither prefix nor prompt body is set → the tier registers without a system prompt.
 
 **When to customize:** if a specific provider/model in a preset needs different instructions (e.g. Gemini-specific tool format, tighter/looser caps for a weaker local model), add `"prompt": "..."` on that tier only. All other presets keep using the global.
 
@@ -564,7 +611,7 @@ To counteract this, the router **automatically prepends an adversarial opener** 
 - The tier prompt for any tier whose `model` matches a Claude identifier
 - The orchestrator delegation protocol when the session model is a Claude identifier
 
-Detection is by model string, not preset. A `hybrid` preset that mixes providers (e.g. `openai/*` for @fast, `anthropic/*` for @medium and @heavy) gets the override only on its Claude-backed tiers.
+Detection is by model string, not preset. A `hybrid` preset that mixes providers (e.g. `openai/*` for @fast, `anthropic/*` for @medium and @heavy) gets the override only on its Claude-backed tiers. The default unknown-provider adapter uses the same detection, so future/provider-proxy prefixes still pick up the Claude safeguards when their model IDs contain `claude-`.
 
 **Tone assignment:**
 
@@ -584,7 +631,7 @@ Detection is by model string, not preset. A `hybrid` preset that mixes providers
 - `<provider>/<namespace>.claude-<anything>` (e.g. `bedrock/us.anthropic.claude-3-5-sonnet-...`) → Claude
 - Everything else → untouched
 
-No configuration is needed — the prefixes are always applied for Claude-backed tiers. If you want to disable them, override the tier's `prompt` field (per-tier overrides replace the whole prompt, including the prefix).
+No configuration is needed — the prefixes are always applied for Claude-backed tiers. If you override a tier's `prompt` field, the adapter still prepends the Claude prefix before your custom prompt.
 
 ### Anti-narration guardrail (Claude models)
 
