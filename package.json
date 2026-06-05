@@ -1,9 +1,9 @@
 {
   "name": "opencode-model-router",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "description": "OpenCode plugin that routes tasks to tiered subagents (fast/medium/heavy) based on complexity",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./src/index.js",
   "license": "GPL-3.0-only",
   "engines": {
     "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
@@ -31,9 +31,10 @@
     "orchestration"
   ],
   "files": [
-    "src/",
-    "!src/**/*.js",
-    "!src/**/*.js.map",
+    "src/index.js",
+    "src/generated/build-info.json",
+    "src/templates/delegation-protocol.md",
+    "src/opencode-ai-plugin.d.ts",
     "tiers.json",
     "LICENSE",
     "README.md"
@@ -42,9 +43,15 @@
     "@opencode-ai/plugin": ">=1.0.0"
   },
   "scripts": {
-    "test": "npm run test:unit && npm run test:bdd",
-    "test:unit": "tsx --test test/unit/**/*.test.ts",
-    "test:bdd": "node --import tsx ./node_modules/@cucumber/cucumber/bin/cucumber-js test/bdd/features/**/*.feature --import test/bdd/steps/**/*.ts"
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "install:local": "npm run prepack && npm --prefix ~/.config/opencode install .",
+    "pretest": "npm run build && npm run typecheck",
+    "prepack": "npm run build && npm run typecheck",
+    "test": "npm run test:unit && npm run test:bdd && npm run test:package",
+    "test:unit": "node --import tsx --test test/unit/**/*.test.ts",
+    "test:bdd": "node --import tsx ./node_modules/@cucumber/cucumber/bin/cucumber-js test/bdd/features/**/*.feature --import test/bdd/steps/**/*.ts",
+    "test:package": "node scripts/verify-pack.mjs"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^12.2.0",

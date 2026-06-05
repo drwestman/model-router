@@ -206,15 +206,12 @@ Then install and configure model-router to handle the rest.
 npm install -g opencode-model-router
 ```
 
-Add to `~/.config/opencode/opencode.json`:
+Add to `~/.config/opencode/opencode.jsonc`:
 ```json
 {
   "plugin": ["opencode-model-router"]
 }
 ```
-
-### Local clone
-Place the checkout where OpenCode loads plugins from (`.opencode/plugins/` or `~/.config/opencode/plugins/`).
 
 ### Install dependencies for local development
 ```bash
@@ -222,6 +219,54 @@ npm install
 ```
 
 The test setup targets Node `20`, `22`, or `24+`.
+
+### Build version metadata
+
+`npm run build` now stamps generated build metadata into the packaged plugin version using SemVer build metadata:
+
+```text
+<package.json version>+<build number>
+```
+
+Examples:
+
+- CI build: `1.1.16+1234`
+- Local build: `1.1.16+20260604151617`
+
+Rules:
+
+- The base release version stays in `package.json`.
+- `GITHUB_RUN_NUMBER`, `BUILD_NUMBER`, and similar CI env vars are used when present.
+- `OPENCODE_MODEL_ROUTER_BUILD_NUMBER` overrides the detected value.
+- Local builds fall back to a UTC timestamp so every build gets a fresh traceable version without mutating committed release metadata.
+
+### Test locally from a clone
+Do not point OpenCode at `src/index.js` or `src/index.ts` directly. Install the package into OpenCode's local npm environment and reference the package name. `npm run install:local` is the convenience wrapper for the real package workflow and runs the same `build + typecheck` gate as `prepack`.
+
+1. Install the local checkout into OpenCode's config directory:
+```bash
+npm run install:local
+```
+
+2. Point OpenCode at the package name in `~/.config/opencode/opencode.jsonc`:
+```json
+{
+  "plugin": ["opencode-model-router"]
+}
+```
+
+3. After code changes, reinstall the package:
+```bash
+npm run install:local
+```
+
+This keeps OpenCode loading the same package shape you will publish: `src/index.js` as the package entrypoint, with package metadata resolved through npm instead of a raw file URL.
+
+If npm fails with cache permission errors under `~/.npm` during local packaging or install checks, use a temporary cache for the command instead of modifying your global npm state:
+
+```bash
+npm --cache /tmp/opencode-model-router-npm-cache pack --dry-run
+```
 
 ## Testing
 
@@ -234,9 +279,30 @@ npx tsc --noEmit --module nodenext --moduleResolution nodenext --target es2022 s
 git diff --check
 ```
 
+Run just the small helper/unit tests:
+
+```bash
+npm run test:unit
+```
+
+Run the BDD suite:
+
+```bash
+npm run test:bdd
+```
+
+`npm test` runs the unit suite, BDD suite, and package-content verification.
+
+### BDD notes
+
+- Feature files live in `test/bdd/features/`.
+- Step definitions live in `test/bdd/steps/` and run through `tsx`.
+- Test runs use fixture-based `tiers.json` data from `test/fixtures/`.
+- Persistence tests write isolated temp state under `tmp/`, never your real `~/.config/opencode/` state.
+
 ## Configuration
 
-All configuration lives in `tiers.json` at the plugin root.
+For npm-installed plugins, the default configuration is the package's bundled `tiers.json`. A `tiers.json` in the current working directory is ignored unless you explicitly set `OPENCODE_MODEL_ROUTER_CONFIG_PATH`. Persisted preset/mode state is stored separately in `~/.config/opencode/opencode-model-router.state.json`, or `OPENCODE_MODEL_ROUTER_STATE_PATH` if you override it.
 
 ## Provider adapters
 

@@ -14,6 +14,11 @@ export interface FixtureState {
   activeMode?: string;
 }
 
+export interface RouterTestEnvOptions {
+  state?: FixtureState;
+  rawStateContent?: string;
+}
+
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const fixturePath = join(repoRoot, "test", "fixtures", "tiers.fixture.json");
 
@@ -25,7 +30,9 @@ export function readJSONFile<T>(filePath: string): T {
   return JSON.parse(readFileSync(filePath, "utf-8")) as T;
 }
 
-export function createRouterTestEnv(state: FixtureState = {}): TestRouterEnv {
+export function createRouterTestEnv(
+  options: RouterTestEnvOptions = {},
+): TestRouterEnv {
   const tmpRoot = join(repoRoot, "tmp");
   mkdirSync(tmpRoot, { recursive: true });
 
@@ -35,9 +42,16 @@ export function createRouterTestEnv(state: FixtureState = {}): TestRouterEnv {
 
   copyFileSync(fixturePath, configPath);
 
-  if (state.activePreset || state.activeMode) {
+  if (options.rawStateContent !== undefined) {
     mkdirSync(dirname(statePath), { recursive: true });
-    writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
+    writeFileSync(statePath, options.rawStateContent, "utf-8");
+  } else if (options.state?.activePreset || options.state?.activeMode) {
+    mkdirSync(dirname(statePath), { recursive: true });
+    writeFileSync(
+      statePath,
+      JSON.stringify(options.state, null, 2) + "\n",
+      "utf-8",
+    );
   }
 
   const previousConfigPath = process.env.OPENCODE_MODEL_ROUTER_CONFIG_PATH;
