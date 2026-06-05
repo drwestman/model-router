@@ -12,7 +12,7 @@ export function isClaudeModel(modelID: string | undefined): boolean {
   if (!modelID) return false;
   const s = modelID.toLowerCase();
   if (s.startsWith("anthropic/")) return true;
-  return /\/claude-/.test(s) || /(^|[\/\.\-])claude-/.test(s);
+  return /(^|[\/\.\-])claude-/.test(s);
 }
 
 /** Per-tier adversarial openers. @fast/@medium use Tom 2 (scoping); @heavy uses Tom 1 (override). */

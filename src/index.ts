@@ -670,15 +670,18 @@ function getActivePresetName(cfg: RouterConfig | null | undefined): string {
   return "unknown";
 }
 
-function composePrompt(
+export function composePrompt(
   prefix: string | undefined,
   prompt: string | undefined,
 ): string | undefined {
-  if (prefix && prompt) {
-    return `${prefix}\n\n---\n\n${prompt}`;
+  const normalizedPrefix = prefix?.trim() || undefined;
+  const normalizedPrompt = prompt?.trim() || undefined;
+
+  if (normalizedPrefix && normalizedPrompt) {
+    return `${normalizedPrefix}\n\n---\n\n${normalizedPrompt}`;
   }
 
-  return prefix ?? prompt;
+  return normalizedPrefix ?? normalizedPrompt;
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,10 +1294,11 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
         orchestratorModel,
       ).buildOrchestratorPromptPrefix(orchestratorModel);
       const delegationProtocol = buildDelegationProtocol(cfg);
-      const finalProtocol =
-        composePrompt(providerPrefix, delegationProtocol) ?? delegationProtocol;
+      const finalProtocol = composePrompt(providerPrefix, delegationProtocol);
 
-      output.system.push(finalProtocol);
+      if (finalProtocol) {
+        output.system.push(finalProtocol);
+      }
     },
 
     // -----------------------------------------------------------------------
