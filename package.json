@@ -13,15 +13,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/marco-jardim/opencode-model-router.git"
+    "url": "git+https://github.com/drwestman/model-router.git"
   },
-  "homepage": "https://github.com/marco-jardim/opencode-model-router",
+  "homepage": "https://github.com/drwestman/model-router",
   "bugs": {
-    "url": "https://github.com/marco-jardim/opencode-model-router/issues"
+    "url": "https://github.com/drwestman/model-router/issues"
   },
   "author": {
-    "name": "Marco Jardim",
-    "url": "https://github.com/marco-jardim"
+    "name": "David Westman",
+    "url": "https://github.com/drwestman"
   },
   "keywords": [
     "opencode",
