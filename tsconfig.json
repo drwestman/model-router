@@ -11,8 +11,8 @@
     "verbatimModuleSyntax": true
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.d.ts",
+    "packages/opencode/src/**/*.ts",
+    "packages/opencode/src/**/*.d.ts",
     "test/**/*.ts"
   ]
 }

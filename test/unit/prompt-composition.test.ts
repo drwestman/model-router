@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { composePrompt } from "../../src/index.ts";
-import { isClaudeModel } from "../../src/providers/claude.ts";
+import { composePrompt } from "../../packages/opencode/src/index.ts";
+import { isClaudeModel } from "../../packages/opencode/src/providers/claude.ts";
 
 test("composePrompt returns undefined when both parts are absent after normalization", () => {
   assert.equal(composePrompt(undefined, "   \n\t  "), undefined);

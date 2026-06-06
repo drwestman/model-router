@@ -49,21 +49,36 @@ test("formatTimestamp returns stable UTC build numbers", () => {
 
 test("buildProject writes generated build metadata and transpiled output", async () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "opencode-model-router-build-"));
+  const packageRoot = join(tempRoot, "packages", "opencode");
+  const sourceRoot = join(packageRoot, "src");
+  const providersRoot = join(sourceRoot, "providers");
 
   try {
     mkdirSync(join(tempRoot, "scripts"), { recursive: true });
-    mkdirSync(join(tempRoot, "src"), { recursive: true });
+    mkdirSync(providersRoot, { recursive: true });
 
     writeFileSync(
-      join(tempRoot, "package.json"),
+      join(packageRoot, "package.json"),
       JSON.stringify({ version: "1.1.16" }, null, 2) + "\n",
       "utf8",
     );
     writeFileSync(
-      join(tempRoot, "src", "index.ts"),
+      join(sourceRoot, "index.ts"),
       'export const answer = 42;\n',
       "utf8",
     );
+    for (const fileName of [
+      "adapter.ts",
+      "anthropic.ts",
+      "claude.ts",
+      "github-copilot.ts",
+      "google.ts",
+      "index.ts",
+      "openai.ts",
+      "unknown.ts",
+    ]) {
+      writeFileSync(join(providersRoot, fileName), "export {};\n", "utf8");
+    }
 
     const result = buildProject(tempRoot, {
       OPENCODE_MODEL_ROUTER_BUILD_NUMBER: "555",
@@ -77,11 +92,11 @@ test("buildProject writes generated build metadata and transpiled output", async
     });
 
     const generatedModule = await import(
-      `${pathToFileURL(join(tempRoot, "src", "generated", "build-info.json")).href}?t=${Date.now()}`
+      `${pathToFileURL(join(sourceRoot, "generated", "build-info.json")).href}?t=${Date.now()}`
     );
     assert.deepEqual(generatedModule.default, result);
 
-    const transpiled = readFileSync(join(tempRoot, "src", "index.js"), "utf8");
+    const transpiled = readFileSync(join(sourceRoot, "index.js"), "utf8");
     assert.match(transpiled, /export const answer = 42;/);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });

@@ -1,9 +1,12 @@
 {
-  "name": "opencode-model-router",
+  "name": "model-router",
   "version": "1.1.16",
-  "description": "OpenCode plugin that routes tasks to tiered subagents (fast/medium/heavy) based on complexity",
+  "description": "Private workspace container for the model-router monorepo",
+  "private": true,
   "type": "module",
-  "main": "./src/index.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "license": "GPL-3.0-only",
   "engines": {
     "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
@@ -31,17 +34,22 @@
     "orchestration"
   ],
   "files": [
-    "src/index.js",
-    "src/generated/build-info.json",
-    "src/templates/delegation-protocol.md",
-    "src/opencode-ai-plugin.d.ts",
-    "tiers.json",
+    "packages/opencode/package.json",
+    "packages/opencode/tiers.json",
+    "packages/opencode/src/generated/build-info.json",
+    "packages/opencode/src/index.js",
+    "packages/opencode/src/providers/adapter.js",
+    "packages/opencode/src/providers/anthropic.js",
+    "packages/opencode/src/providers/claude.js",
+    "packages/opencode/src/providers/github-copilot.js",
+    "packages/opencode/src/providers/google.js",
+    "packages/opencode/src/providers/index.js",
+    "packages/opencode/src/providers/openai.js",
+    "packages/opencode/src/providers/unknown.js",
+    "packages/opencode/src/templates/delegation-protocol.md",
     "LICENSE",
     "README.md"
   ],
-  "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.0.0"
-  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",

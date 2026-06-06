@@ -1,0 +1,65 @@
+{
+  "activePreset": "anthropic",
+  "activeMode": "normal",
+  "tierCaps": {
+    "fast": 8,
+    "medium": 5,
+    "heavy": 3
+  },
+  "presets": {
+    "anthropic": {
+      "fast": {
+        "model": "anthropic/claude-haiku-4-5",
+        "description": "OpenCode fast exploration tier",
+        "whenToUse": [
+          "Search",
+          "Read-only exploration"
+        ]
+      },
+      "medium": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "description": "OpenCode implementation tier",
+        "whenToUse": [
+          "Implementation",
+          "Refactoring",
+          "Tests"
+        ]
+      },
+      "heavy": {
+        "model": "anthropic/claude-opus-4-6",
+        "description": "OpenCode architecture tier",
+        "whenToUse": [
+          "Architecture",
+          "Complex debugging"
+        ]
+      }
+    }
+  },
+  "modes": {
+    "normal": {
+      "defaultTier": "medium",
+      "description": "Balanced default mode"
+    }
+  },
+  "taskPatterns": {
+    "fast": [
+      "search",
+      "read",
+      "grep"
+    ],
+    "medium": [
+      "implement",
+      "refactor",
+      "test"
+    ],
+    "heavy": [
+      "architecture",
+      "debug"
+    ]
+  },
+  "rules": [
+    "default preference: read-only work → fast; implementation → medium",
+    "escalate architecture and repeated debugging to heavy"
+  ],
+  "defaultTier": "medium"
+}

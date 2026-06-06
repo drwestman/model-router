@@ -1,16 +1,26 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "typescript";
 
 export function buildProject(rootDir = process.cwd(), env = process.env) {
-  const sourcePath = join(rootDir, "src", "index.ts");
-  const outputPath = join(rootDir, "src", "index.js");
-  const buildInfoDir = join(rootDir, "src", "generated");
+  const packageDir = join(rootDir, "packages", "opencode");
+  const sourceDir = join(packageDir, "src");
+  const sourcePaths = [
+    join(sourceDir, "index.ts"),
+    join(sourceDir, "providers", "adapter.ts"),
+    join(sourceDir, "providers", "anthropic.ts"),
+    join(sourceDir, "providers", "claude.ts"),
+    join(sourceDir, "providers", "github-copilot.ts"),
+    join(sourceDir, "providers", "google.ts"),
+    join(sourceDir, "providers", "index.ts"),
+    join(sourceDir, "providers", "openai.ts"),
+    join(sourceDir, "providers", "unknown.ts"),
+  ];
+  const buildInfoDir = join(sourceDir, "generated");
   const buildInfoPath = join(buildInfoDir, "build-info.json");
-  const packageJsonPath = join(rootDir, "package.json");
+  const packageJsonPath = join(packageDir, "package.json");
 
-  const source = readFileSync(sourcePath, "utf8");
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
   const baseVersion = getBaseVersion(packageJson);
   const resolvedBuildNumber = resolveBuildNumber(env);
@@ -18,15 +28,22 @@ export function buildProject(rootDir = process.cwd(), env = process.env) {
   const buildNumber = resolvedBuildNumber.value;
   const fullVersion = `${baseVersion}+${buildNumber}`;
 
-  const result = ts.transpileModule(source, {
-    fileName: sourcePath,
-    compilerOptions: {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ES2022,
-      sourceMap: false,
-      removeComments: false,
-    },
-  });
+  for (const sourcePath of sourcePaths) {
+    const source = readFileSync(sourcePath, "utf8");
+    const result = ts.transpileModule(source, {
+      fileName: sourcePath,
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ES2022,
+        sourceMap: false,
+        removeComments: false,
+      },
+    });
+
+    const outputPath = sourcePath.replace(/\.ts$/, ".js");
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, result.outputText, "utf8");
+  }
 
   mkdirSync(buildInfoDir, { recursive: true });
   writeFileSync(
@@ -43,8 +60,6 @@ export function buildProject(rootDir = process.cwd(), env = process.env) {
     ) + "\n",
     "utf8",
   );
-  writeFileSync(outputPath, result.outputText, "utf8");
-
   return {
     baseVersion,
     buildNumber,

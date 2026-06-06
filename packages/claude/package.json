@@ -1,0 +1,16 @@
+{
+  "name": "@drwestman/model-router-claude",
+  "version": "1.1.16",
+  "private": true,
+  "description": "Private Claude adapter scaffold for model-router",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": "./src/index.ts",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@drwestman/model-router-core": "1.1.16"
+  }
+}

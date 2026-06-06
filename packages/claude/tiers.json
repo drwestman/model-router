@@ -1,0 +1,42 @@
+{
+  "activePreset": "anthropic",
+  "tierCaps": {
+    "fast": 8,
+    "medium": 5,
+    "heavy": 3
+  },
+  "presets": {
+    "anthropic": {
+      "fast": {
+        "model": "anthropic/claude-haiku-4-5",
+        "description": "Claude fast exploration tier",
+        "whenToUse": [
+          "Search",
+          "Read-only exploration"
+        ]
+      },
+      "medium": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "description": "Claude implementation tier",
+        "whenToUse": [
+          "Implementation",
+          "Refactoring",
+          "Tests"
+        ]
+      },
+      "heavy": {
+        "model": "anthropic/claude-opus-4-6",
+        "description": "Claude deep analysis tier",
+        "whenToUse": [
+          "Architecture",
+          "Complex debugging"
+        ]
+      }
+    }
+  },
+  "rules": [
+    "scaffold package only",
+    "adapter-specific integration still required"
+  ],
+  "defaultTier": "medium"
+}

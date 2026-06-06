@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { After, Given, Then, When, setWorldConstructor } from "@cucumber/cucumber";
 
-import ModelRouterPlugin, { invalidateConfigCache } from "../../../src/index.ts";
+import ModelRouterPlugin, { invalidateConfigCache } from "../../../packages/opencode/src/index.ts";
 import {
   createRouterTestEnv,
   loadFixtureConfig,
@@ -124,7 +124,7 @@ When(
       {
         sessionID: "fixture-session",
         tool: "read",
-        args: { filePath: "src/index.ts" },
+        args: { filePath: "packages/opencode/src/index.ts" },
       },
       firstOutput,
     );
@@ -134,7 +134,7 @@ When(
       {
         sessionID: "fixture-session",
         tool: "read",
-        args: { filePath: "src/index.ts" },
+        args: { filePath: "packages/opencode/src/index.ts" },
       },
       secondOutput,
     );

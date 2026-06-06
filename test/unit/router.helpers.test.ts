@@ -8,7 +8,7 @@ import ModelRouterPlugin, {
   invalidateConfigCache,
   routerBuildInfo,
   routerVersion,
-} from "../../src/index.ts";
+} from "../../packages/opencode/src/index.ts";
 import {
   applyPersistedState,
   buildAgentDefinition,
@@ -21,8 +21,8 @@ import {
   registerActiveTierAgents,
   resolveRouterPaths,
   writeStateFile,
-} from "../../src/index.ts";
-import { isClaudeModel } from "../../src/providers/claude.ts";
+} from "../../packages/opencode/src/index.ts";
+import { isClaudeModel } from "../../packages/opencode/src/providers/claude.ts";
 import { createRouterTestEnv, readJSONFile } from "../helpers/router-test-env.ts";
 
 const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -75,7 +75,7 @@ test("resolveRouterPaths defaults to bundled config even when cwd has tiers.json
 
     const resolved = resolveRouterPaths({} as NodeJS.ProcessEnv);
 
-    assert.equal(resolved.configPath, join(repoRoot, "tiers.json"));
+    assert.equal(resolved.configPath, join(repoRoot, "packages", "opencode", "tiers.json"));
     assert.notEqual(resolved.configPath, join(cwdWithTiers, "tiers.json"));
   } finally {
     process.chdir(originalCwd);
