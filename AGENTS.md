@@ -1,7 +1,7 @@
 # Agent Notes
 
 - Repo is a private npm workspace monorepo; root `package.json` is the workspace container and runtime code lives under `packages/*`.
-- Workspace packages are `core`, `opencode`, `claude`, and `codex`; `claude` and `codex` are scaffolds, while `opencode` is the implemented/reference adapter.
+- Workspace packages are `core`, `opencode`, `claude`, and `codex`; `claude` is a scaffold, `opencode` is the implemented/reference adapter, and `codex` is a Codex plugin bundle package.
 - The OpenCode runtime entrypoint is `packages/opencode/src/index.ts`; it exports the default plugin function and validates/loads `packages/opencode/tiers.json`.
 - The plugin persists user-selected preset/mode in `~/.config/opencode/opencode-model-router.state.json`; do not use `tiers.json` for session state.
 - Setup is `npm install`.

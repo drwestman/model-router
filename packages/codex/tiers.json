@@ -35,8 +35,8 @@
     }
   },
   "rules": [
-    "scaffold package only",
-    "adapter-specific integration still required"
+    "routing guidance only; Codex does not enforce this file at runtime",
+    "app integration remains deferred until the Codex app schema is confirmed"
   ],
   "defaultTier": "medium"
 }

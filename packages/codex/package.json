@@ -2,15 +2,18 @@
   "name": "@drwestman/model-router-codex",
   "version": "1.1.16",
   "private": true,
-  "description": "Private Codex adapter scaffold for model-router",
+  "description": "Private Codex plugin bundle for model-router",
   "type": "module",
-  "main": "./src/index.ts",
-  "exports": "./src/index.ts",
+  "files": [
+    ".codex-plugin/",
+    "hooks/",
+    "skills/",
+    "src/index.ts",
+    "README.md",
+    "tiers.json"
+  ],
   "license": "GPL-3.0-only",
   "engines": {
     "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
-  },
-  "dependencies": {
-    "@drwestman/model-router-core": "1.1.16"
   }
 }

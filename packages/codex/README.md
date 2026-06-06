@@ -1,13 +1,21 @@
 # @drwestman/model-router-codex
 
-Codex adapter scaffold for the monorepo.
+Codex plugin bundle for the model-router monorepo.
 
-The host integration is intentionally not implemented yet because this repo does not currently define the Codex host API surface.
+This workspace package is intended to be consumed as a Codex plugin bundle from `packages/codex/`. It is not part of the root OpenCode install flow.
 
-This private workspace package reserves the adapter boundary and adapter-local configuration.
+This package currently ships bundle assets for Codex plugin installation:
+
+- `.codex-plugin/plugin.json`
+- `skills/model-router-routing/SKILL.md`
+- `hooks/hooks.json`
+- `hooks/session-start.mjs`
 
 Current scope:
 
-- adapter-local `tiers.json`
-- package metadata
-- explicit placeholder entrypoint
+- package and plugin metadata
+- static routing guidance in `tiers.json`
+- one informational session-start hook
+- one focused routing skill
+
+Codex app integration is intentionally deferred until the host manifest schema for `apps` is confirmed.

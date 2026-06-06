@@ -1,17 +1,29 @@
-import { createAdapterPaths, packageRootFrom } from "../../core/src/index.js";
+import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
 
-export const adapterName = "codex";
-export const adapterPaths = createAdapterPaths({
-  host: adapterName,
-  packageRoot: packageRootFrom(import.meta.url),
-  configEnvVar: "CODEX_MODEL_ROUTER_CONFIG_PATH",
-  stateEnvVar: "CODEX_MODEL_ROUTER_STATE_PATH",
-  stateDirectorySegments: [".config", "codex"],
-  stateFileName: "codex-model-router.state.json",
-});
+export const codexPluginName = "@drwestman/model-router-codex";
+export const packageName = "@drwestman/model-router-codex";
+export const packageVersion = "1.1.16";
+export const packageDescription = "Private Codex plugin bundle for model-router";
+export const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-export function createCodexAdapter(): never {
-  throw new Error(
-    "@drwestman/model-router-codex is a scaffold only; the Codex host API integration is not implemented yet.",
-  );
-}
+export const codexPluginRoot = packageRoot;
+export const codexPluginManifestPath = join(codexPluginRoot, ".codex-plugin", "plugin.json");
+export const codexPluginSkillsPath = join(codexPluginRoot, "skills");
+export const codexPluginHooksPath = join(codexPluginRoot, "hooks", "hooks.json");
+export const codexSessionStartHookScriptPath = join(codexPluginRoot, "hooks", "session-start.mjs");
+
+const codexPluginBundle = {
+  codexPluginName,
+  packageName,
+  packageVersion,
+  packageDescription,
+  packageRoot,
+  codexPluginRoot,
+  codexPluginManifestPath,
+  codexPluginSkillsPath,
+  codexPluginHooksPath,
+  codexSessionStartHookScriptPath,
+} as const;
+
+export default codexPluginBundle;
