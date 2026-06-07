@@ -1,10 +1,11 @@
 {
   "name": "@drwestman/model-router-codex",
-  "version": "1.1.16",
+  "version": "1.1.18",
   "private": true,
   "description": "Private Codex plugin bundle for model-router",
   "type": "module",
   "files": [
+    ".app.json",
     ".codex-plugin/",
     "hooks/",
     "skills/",

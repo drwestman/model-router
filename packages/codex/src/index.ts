@@ -1,9 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
-export const codexPluginName = "@drwestman/model-router-codex";
+export const codexPluginName = "model-router-codex";
 export const packageName = "@drwestman/model-router-codex";
-export const packageVersion = "1.1.16";
+export const packageVersion = "1.1.18";
 export const packageDescription = "Private Codex plugin bundle for model-router";
 export const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

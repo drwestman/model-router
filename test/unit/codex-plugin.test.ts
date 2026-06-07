@@ -7,6 +7,7 @@ import test from "node:test";
 import codexPluginBundle, {
   codexPluginHooksPath,
   codexPluginManifestPath,
+  codexPluginName,
   codexPluginRoot,
   codexPluginSkillsPath,
   codexSessionStartHookScriptPath,
@@ -16,6 +17,8 @@ import codexPluginBundle, {
 } from "../../packages/codex/src/index.ts";
 
 const manifest = JSON.parse(readFileSync(codexPluginManifestPath, "utf8")) as Record<string, unknown>;
+const appManifestPath = path.join(codexPluginRoot, ".app.json");
+const appManifest = JSON.parse(readFileSync(appManifestPath, "utf8")) as Record<string, unknown>;
 const hooks = JSON.parse(readFileSync(codexPluginHooksPath, "utf8")) as {
   hooks?: Record<string, unknown>;
 };
@@ -25,7 +28,14 @@ const codexPackageJson = JSON.parse(
   files?: unknown;
 };
 const skillPath = path.join(codexPluginSkillsPath, "model-router-routing", "SKILL.md");
+const codexAgentsRoot = path.resolve(".codex/agents");
+const codexAgentPaths = [
+  path.join(codexAgentsRoot, "router_fast.toml"),
+  path.join(codexAgentsRoot, "router_medium.toml"),
+  path.join(codexAgentsRoot, "router_heavy.toml"),
+];
 const expectedPackageFileEntries = [
+  ".app.json",
   ".codex-plugin/",
   "hooks/",
   "skills/",
@@ -34,6 +44,7 @@ const expectedPackageFileEntries = [
   "tiers.json",
 ];
 const expectedPackedAssetPaths = [
+  ".app.json",
   ".codex-plugin/plugin.json",
   "hooks/hooks.json",
   "hooks/session-start.mjs",
@@ -77,19 +88,34 @@ test("codex plugin bundle exports metadata and safe paths", () => {
 });
 
 test("codex plugin manifest contains only verified fields and safe relative paths", () => {
-  assert.deepEqual(Object.keys(manifest).sort(), ["description", "name", "skills", "version"]);
-  assert.equal(manifest.name, packageName);
+  assert.deepEqual(Object.keys(manifest).sort(), ["apps", "description", "name", "skills", "version"]);
+  assert.equal(manifest.name, codexPluginName);
   assert.equal(manifest.version, packageVersion);
   assert.equal(manifest.description, packageDescription);
+  assert.equal(manifest.apps, "./.app.json");
   assert.equal(manifest.skills, "./skills/");
+  assert.match(String(manifest.apps), /^\.\//);
+  assert.doesNotMatch(String(manifest.apps), /(^|\/)\.\.(\/|$)/);
   assert.match(String(manifest.skills), /^\.\//);
   assert.doesNotMatch(String(manifest.skills), /(^|\/)\.\.(\/|$)/);
+});
+
+test("codex app manifest exists and contains the placeholder apps object", () => {
+  assert.ok(existsSync(appManifestPath), ".app.json missing");
+  assert.deepEqual(appManifest, { apps: {} });
 });
 
 test("codex plugin skill and hooks exist with expected minimal shape", () => {
   assert.ok(existsSync(skillPath), "skill file missing");
   const skill = readFileSync(skillPath, "utf8");
   assert.match(skill, /^---\nname: model-router-routing\ndescription: .+\n---/);
+  assert.match(skill, /spawn built-in `explorer`/i);
+  assert.match(skill, /spawn built-in `worker`/i);
+  assert.match(skill, /`router_fast`/i);
+  assert.match(skill, /`router_medium`/i);
+  assert.match(skill, /`router_heavy`/i);
+  assert.match(skill, /built-in `explorer`/i);
+  assert.match(skill, /built-in `worker`/i);
 
   assert.ok(existsSync(codexPluginHooksPath), "hooks file missing");
   assert.ok(existsSync(codexSessionStartHookScriptPath), "hook script missing");
@@ -105,6 +131,25 @@ test("codex plugin skill and hooks exist with expected minimal shape", () => {
       ],
     },
   ]);
+});
+
+test("repo-scoped Codex subagent definitions exist", () => {
+  const expectedModels = new Map([
+    ["router_fast.toml", 'model = "gpt-5.4-mini"'],
+    ["router_medium.toml", 'model = "gpt-5.4"'],
+    ["router_heavy.toml", 'model = "gpt-5.5"'],
+  ]);
+
+  for (const agentPath of codexAgentPaths) {
+    assert.ok(existsSync(agentPath), `${path.basename(agentPath)} missing`);
+    const agentConfig = readFileSync(agentPath, "utf8");
+    assert.match(agentConfig, /^name = "/m);
+    assert.match(agentConfig, /^description = "/m);
+    assert.match(agentConfig, /^nickname_candidates = \[/m);
+    assert.match(agentConfig, /^model = "/m);
+    assert.match(agentConfig, /^developer_instructions = """/m);
+    assert.match(agentConfig, new RegExp(expectedModels.get(path.basename(agentPath)) ?? "^$"));
+  }
 });
 
 test("codex package files avoid scaffold-only wording and entrypoint does not throw", async () => {

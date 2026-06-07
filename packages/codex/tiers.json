@@ -8,7 +8,7 @@
   "presets": {
     "openai": {
       "fast": {
-        "model": "openai/gpt-5.4-mini-fast",
+        "model": "gpt-5.4-mini-fast",
         "description": "Codex fast exploration tier",
         "whenToUse": [
           "Search",
@@ -16,7 +16,7 @@
         ]
       },
       "medium": {
-        "model": "openai/gpt-5.4-fast",
+        "model": "gpt-5.4-fast",
         "description": "Codex implementation tier",
         "whenToUse": [
           "Implementation",
@@ -25,7 +25,7 @@
         ]
       },
       "heavy": {
-        "model": "openai/gpt-5.5-fast",
+        "model": "gpt-5.5-fast",
         "description": "Codex deep analysis tier",
         "whenToUse": [
           "Architecture",
