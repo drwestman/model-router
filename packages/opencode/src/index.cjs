@@ -1,6 +1,6 @@
 "use strict";
 
-const pluginModule = require("./index.js");
+const pluginModule = require("./index.bundle.cjs");
 const pluginExport =
   typeof pluginModule === "function" ? pluginModule : pluginModule.default;
 

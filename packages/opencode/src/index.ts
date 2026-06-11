@@ -142,11 +142,24 @@ function buildInfoPath(): string {
 }
 
 function getSourceDir(): string {
+  const commonJsDir = getCommonJsDirname();
+  if (commonJsDir) {
+    return commonJsDir;
+  }
+
   try {
     return dirname(fileURLToPath(import.meta.url));
   } catch {
     const cwd = safeCurrentWorkingDir();
     return cwd ? join(cwd, "src") : ".";
+  }
+}
+
+function getCommonJsDirname(): string | undefined {
+  try {
+    return typeof __dirname === "string" && __dirname ? __dirname : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -1387,9 +1400,11 @@ export const tui = async (api: any) => {
       suggested: true,
       slash: { name },
       onSelect: async () => {
-        await api.client.tui.clearPrompt();
-        await api.client.tui.appendPrompt({ text: `/${name}` });
-        await api.client.tui.submitPrompt();
+        if (!api?.client?.tui) return;
+
+        await api.client.tui.clearPrompt?.();
+        await api.client.tui.appendPrompt?.({ text: `/${name}` });
+        await api.client.tui.submitPrompt?.();
       },
     })),
   );
