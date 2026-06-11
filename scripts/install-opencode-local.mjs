@@ -8,24 +8,24 @@ const pluginSourcePath = join(rootDir, "packages", "opencode", "src", "index.js"
 const globalConfigDir = join(homedir(), ".config", "opencode");
 const globalPluginDir = join(globalConfigDir, "plugins");
 const globalPluginPath = join(globalPluginDir, "model-router.js");
+const globalPluginPackagePath = join(globalPluginDir, "package.json");
 const pluginSourceUrl = pathToFileURL(pluginSourcePath).href;
 
 mkdirSync(globalPluginDir, { recursive: true });
 writeFileSync(
+  globalPluginPackagePath,
+  `${JSON.stringify({ type: "module" }, null, 2)}\n`,
+  "utf8",
+);
+writeFileSync(
   globalPluginPath,
   [
-    '"use strict";',
-    "",
     `const pluginSourceUrl = ${JSON.stringify(pluginSourceUrl)};`,
     "",
-    "async function ModelRouterPlugin(ctx) {",
+    "export default async function ModelRouterPlugin(ctx) {",
     "  const pluginModule = await import(pluginSourceUrl);",
     "  return pluginModule.default(ctx);",
     "}",
-    "",
-    "module.exports = {",
-    "  ModelRouterPlugin,",
-    "};",
     "",
   ].join("\n"),
   "utf8",
