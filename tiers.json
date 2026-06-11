@@ -55,9 +55,9 @@
     },
     "openai": {
       "fast": {
-        "model": "openai/gpt-5.4-mini-fast",
+        "model": "openai/gpt-5.4-mini",
         "costRatio": 1,
-        "description": "GPT-5.4 Mini Fast for fast exploration and simple tasks",
+        "description": "GPT-5.4 Mini for fast exploration and simple tasks",
         "steps": 30,
         "whenToUse": [
           "Codebase exploration and search",
@@ -66,10 +66,10 @@
         ]
       },
       "medium": {
-        "model": "openai/gpt-5.4-fast",
+        "model": "openai/gpt-5.4",
         "variant": "high",
         "costRatio": 5,
-        "description": "GPT-5.4 fast default settings for implementation and standard coding",
+        "description": "GPT-5.4 default settings for implementation and standard coding",
         "steps": 50,
         "whenToUse": [
           "Feature implementation",
@@ -79,10 +79,10 @@
         ]
       },
       "heavy": {
-        "model": "openai/gpt-5.5-fast",
+        "model": "openai/gpt-5.5",
         "variant": "xhigh",
         "costRatio": 20,
-        "description": "GPT-5.4 xhigh for architecture and complex tasks",
+        "description": "GPT-5.5 xhigh for architecture and complex tasks",
         "steps": 120,
         "whenToUse": [
           "Architecture decisions",

@@ -34,6 +34,61 @@ export interface RouterBuildInfo {
 export const routerBuildInfo = loadRouterBuildInfo();
 export const routerVersion = routerBuildInfo.fullVersion;
 
+type RouterCommandSpec = {
+  template: string;
+  description: string;
+};
+
+function getRouterCommandSpecs(): Record<string, RouterCommandSpec> {
+  return {
+    tiers: {
+      template: "",
+      description: "Show model delegation tiers and rules",
+    },
+    preset: {
+      template: "$ARGUMENTS",
+      description: "Show or switch model presets (e.g., /preset openai)",
+    },
+    budget: {
+      template: "$ARGUMENTS",
+      description:
+        "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
+    },
+    bypass: {
+      template: "$ARGUMENTS",
+      description:
+        "Toggle model-router bypass (disables delegation protocol for this session)",
+    },
+    "annotate-plan": {
+      template: [
+        "Annotate the plan with tier directives for model delegation.",
+        "",
+        'Plan file: "$ARGUMENTS"',
+        "If no file was specified, search for the active plan: PLAN.md, plan.md, or the most recent .md with 'plan' in the name in the current directory or project root.",
+        "",
+        "## Available tiers",
+        "- `[tier:fast]` — Fast/cheap model: exploration, search, file reads, grep, listing, research. Agent does NOT edit code.",
+        "- `[tier:medium]` — Balanced model: implementation, refactoring, tests, code review, bug fixes, standard coding tasks.",
+        "- `[tier:heavy]` — Most capable model: architecture, complex debugging (after failures), security, performance, multi-system tradeoffs.",
+        "",
+        "## Annotation rules",
+        "1. Place `[tier:X]` at the START of each step, before the description",
+        "2. Research/exploration -> `[tier:fast]` (preferred)",
+        "3. Implementation/code -> `[tier:medium]` (preferred)",
+        "4. Architecture/security/hard debugging -> `[tier:heavy]`",
+        "5. If a step mixes exploration AND implementation, prefer splitting it into two steps when it improves delegation clarity",
+        "6. Verification (run tests, build) -> `[tier:medium]`",
+        "7. Trivial (single grep or file read) -> `[tier:fast]`",
+        "8. Final review of the complete plan -> `[tier:heavy]`",
+        "",
+        "## Output",
+        "Rewrite the entire plan in the file with the tags. Do not change the substance — only add tags, and split mixed steps when useful for clearer delegation.",
+      ].join("\n"),
+      description: "Annotate a plan with [tier:fast/medium/heavy] delegation tags",
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Config loader with caching
 // ---------------------------------------------------------------------------
@@ -1217,52 +1272,7 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
 
       // Register commands
       opencodeConfig.command ??= {};
-      opencodeConfig.command["tiers"] = {
-        template: "",
-        description: "Show model delegation tiers and rules",
-      };
-      opencodeConfig.command["preset"] = {
-        template: "$ARGUMENTS",
-        description: "Show or switch model presets (e.g., /preset openai)",
-      };
-      opencodeConfig.command["budget"] = {
-        template: "$ARGUMENTS",
-        description:
-          "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
-      };
-      opencodeConfig.command["bypass"] = {
-        template: "$ARGUMENTS",
-        description:
-          "Toggle model-router bypass (disables delegation protocol for this session)",
-      };
-      opencodeConfig.command["annotate-plan"] = {
-        template: [
-          "Annotate the plan with tier directives for model delegation.",
-          "",
-          'Plan file: "$ARGUMENTS"',
-          "If no file was specified, search for the active plan: PLAN.md, plan.md, or the most recent .md with 'plan' in the name in the current directory or project root.",
-          "",
-          "## Available tiers",
-          "- `[tier:fast]` — Fast/cheap model: exploration, search, file reads, grep, listing, research. Agent does NOT edit code.",
-          "- `[tier:medium]` — Balanced model: implementation, refactoring, tests, code review, bug fixes, standard coding tasks.",
-          "- `[tier:heavy]` — Most capable model: architecture, complex debugging (after failures), security, performance, multi-system tradeoffs.",
-          "",
-          "## Annotation rules",
-          "1. Place `[tier:X]` at the START of each step, before the description",
-          "2. Research/exploration -> `[tier:fast]` (preferred)",
-          "3. Implementation/code -> `[tier:medium]` (preferred)",
-          "4. Architecture/security/hard debugging -> `[tier:heavy]`",
-          "5. If a step mixes exploration AND implementation, prefer splitting it into two steps when it improves delegation clarity",
-          "6. Verification (run tests, build) -> `[tier:medium]`",
-          "7. Trivial (single grep or file read) -> `[tier:fast]`",
-          "8. Final review of the complete plan -> `[tier:heavy]`",
-          "",
-          "## Output",
-          "Rewrite the entire plan in the file with the tags. Do not change the substance — only add tags, and split mixed steps when useful for clearer delegation.",
-        ].join("\n"),
-        description:
-          "Annotate a plan with [tier:fast/medium/heavy] delegation tags",
-      };
+      Object.assign(opencodeConfig.command, getRouterCommandSpecs());
 
       return opencodeConfig;
     },
@@ -1358,8 +1368,32 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
 };
 
 export default ModelRouterPlugin;
+export const server = ModelRouterPlugin;
+(ModelRouterPlugin as typeof ModelRouterPlugin & { server?: typeof ModelRouterPlugin }).server =
+  ModelRouterPlugin;
 (ModelRouterPlugin as typeof ModelRouterPlugin & { version?: string }).version =
   routerVersion;
+
+export const tui = async (api: any) => {
+  const register = api?.command?.register;
+  if (typeof register !== "function") return;
+
+  register(() =>
+    Object.entries(getRouterCommandSpecs()).map(([name, spec]) => ({
+      title: `/${name}`,
+      value: `model-router.${name}`,
+      description: spec.description,
+      category: "Model Router",
+      suggested: true,
+      slash: { name },
+      onSelect: async () => {
+        await api.client.tui.clearPrompt();
+        await api.client.tui.appendPrompt({ text: `/${name}` });
+        await api.client.tui.submitPrompt();
+      },
+    })),
+  );
+};
 
 export function buildAgentDefinition(
   name: string,

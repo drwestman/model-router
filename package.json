@@ -4,6 +4,14 @@
   "description": "Private workspace container for the model-router monorepo",
   "private": true,
   "type": "module",
+  "main": "./index.cjs",
+  "exports": {
+    ".": {
+      "import": "./packages/opencode/src/index.js",
+      "require": "./index.cjs",
+      "default": "./index.cjs"
+    }
+  },
   "workspaces": [
     "packages/*"
   ],
@@ -34,9 +42,11 @@
     "orchestration"
   ],
   "files": [
+    "index.cjs",
     "packages/opencode/package.json",
     "packages/opencode/tiers.json",
     "packages/opencode/src/generated/build-info.json",
+    "packages/opencode/src/index.cjs",
     "packages/opencode/src/index.js",
     "packages/opencode/src/providers/adapter.js",
     "packages/opencode/src/providers/anthropic.js",
@@ -53,7 +63,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "install:local": "npm run prepack && npm --prefix ~/.config/opencode install .",
+    "install-opencode:local": "npm run prepack && node scripts/install-opencode-local.mjs",
     "pretest": "npm run build && npm run typecheck",
     "prepack": "npm run build && npm run typecheck",
     "test": "npm run test:unit && npm run test:bdd && npm run test:package",
