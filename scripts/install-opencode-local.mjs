@@ -11,25 +11,32 @@ const globalPluginPath = join(globalPluginDir, "model-router.js");
 const globalPluginPackagePath = join(globalPluginDir, "package.json");
 const pluginSourceUrl = pathToFileURL(pluginSourcePath).href;
 
-mkdirSync(globalPluginDir, { recursive: true });
-writeFileSync(
-  globalPluginPackagePath,
-  `${JSON.stringify({ type: "module" }, null, 2)}\n`,
-  "utf8",
-);
-writeFileSync(
-  globalPluginPath,
-  [
-    `const pluginSourceUrl = ${JSON.stringify(pluginSourceUrl)};`,
-    "",
-    "export default async function ModelRouterPlugin(ctx) {",
-    "  const pluginModule = await import(pluginSourceUrl);",
-    "  return pluginModule.default(ctx);",
-    "}",
-    "",
-  ].join("\n"),
-  "utf8",
-);
+try {
+  mkdirSync(globalPluginDir, { recursive: true });
+  writeFileSync(
+    globalPluginPackagePath,
+    `${JSON.stringify({ type: "module" }, null, 2)}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    globalPluginPath,
+    [
+      `const pluginSourceUrl = ${JSON.stringify(pluginSourceUrl)};`,
+      "",
+      "export default async function ModelRouterPlugin(ctx) {",
+      "  const pluginModule = await import(pluginSourceUrl);",
+      "  return pluginModule.default(ctx);",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+} catch {
+  console.error(
+    `Error: Failed to write to OpenCode plugin directory at ${globalPluginDir}. Check permissions and try again.`,
+  );
+  process.exit(1);
+}
 
 const globalConfigPath = join(globalConfigDir, "opencode.json");
 const stalePluginWarnings = [];
