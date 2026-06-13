@@ -11,10 +11,13 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const allowedFiles = [
   "LICENSE",
   "README.md",
+  "index.cjs",
   "package.json",
   "packages/opencode/README.md",
   "packages/opencode/package.json",
   "packages/opencode/src/generated/build-info.json",
+  "packages/opencode/src/index.bundle.cjs",
+  "packages/opencode/src/index.cjs",
   "packages/opencode/src/index.js",
   "packages/opencode/src/providers/adapter.js",
   "packages/opencode/src/providers/anthropic.js",

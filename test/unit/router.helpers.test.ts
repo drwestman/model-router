@@ -8,6 +8,7 @@ import ModelRouterPlugin, {
   invalidateConfigCache,
   routerBuildInfo,
   routerVersion,
+  tui,
 } from "../../packages/opencode/src/index.ts";
 import {
   applyPersistedState,
@@ -374,6 +375,50 @@ test("plugin config registers agents and commands without provider metadata", as
     invalidateConfigCache();
   }
 });
+
+test("tui plugin registers slash commands and dispatches them through the prompt", async () => {
+  const calls: Array<[string, string?]> = [];
+  let commands: Array<Record<string, unknown>> = [];
+
+  await tui({
+    command: {
+      register: (cb: () => Array<Record<string, unknown>>) => {
+        commands = cb();
+        return () => {};
+      },
+    },
+    client: {
+      tui: {
+        clearPrompt: async () => {
+          calls.push(["clearPrompt"]);
+        },
+        appendPrompt: async ({ text }: { text?: string }) => {
+          calls.push(["appendPrompt", text]);
+        },
+        submitPrompt: async () => {
+          calls.push(["submitPrompt"]);
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    commands.map((command) => command.slash).map((slash) => (slash as { name: string }).name),
+    ["tiers", "preset", "budget", "bypass", "annotate-plan"],
+  );
+
+  const budgetCommand = commands.find((command) => command.value === "model-router.budget") as {
+    onSelect: () => Promise<void>;
+  };
+  await budgetCommand.onSelect();
+
+  assert.deepEqual(calls, [
+    ["clearPrompt"],
+    ["appendPrompt", "/budget"],
+    ["submitPrompt"],
+  ]);
+});
+
 test("extractDispatchText tolerates non-array parts", () => {
   const output = { parts: "bad" };
 

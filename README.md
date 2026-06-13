@@ -36,6 +36,16 @@ Default state locations are isolated per host:
 npm install
 ```
 
+## OpenCode local install
+
+Register the OpenCode plugin in the documented global plugin directory:
+
+```bash
+npm run install-opencode:local
+```
+
+This writes `~/.config/opencode/plugins/model-router.js` as a CommonJS loader that dynamically imports the built adapter from this workspace. Do not also list `"model-router"` in an OpenCode `plugin` array; that uses npm-plugin loading instead of the local plugin directory.
+
 ## Verification
 
 Practical repo checks:

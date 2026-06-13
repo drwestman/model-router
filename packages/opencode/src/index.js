@@ -6,6 +6,53 @@ import { resolveProviderAdapter } from "./providers/index.js";
 import { fileURLToPath } from "url";
 export const routerBuildInfo = loadRouterBuildInfo();
 export const routerVersion = routerBuildInfo.fullVersion;
+function getRouterCommandSpecs() {
+    return {
+        tiers: {
+            template: "",
+            description: "Show model delegation tiers and rules",
+        },
+        preset: {
+            template: "$ARGUMENTS",
+            description: "Show or switch model presets (e.g., /preset openai)",
+        },
+        budget: {
+            template: "$ARGUMENTS",
+            description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
+        },
+        bypass: {
+            template: "$ARGUMENTS",
+            description: "Toggle model-router bypass (disables delegation protocol for this session)",
+        },
+        "annotate-plan": {
+            template: [
+                "Annotate the plan with tier directives for model delegation.",
+                "",
+                'Plan file: "$ARGUMENTS"',
+                "If no file was specified, search for the active plan: PLAN.md, plan.md, or the most recent .md with 'plan' in the name in the current directory or project root.",
+                "",
+                "## Available tiers",
+                "- `[tier:fast]` — Fast/cheap model: exploration, search, file reads, grep, listing, research. Agent does NOT edit code.",
+                "- `[tier:medium]` — Balanced model: implementation, refactoring, tests, code review, bug fixes, standard coding tasks.",
+                "- `[tier:heavy]` — Most capable model: architecture, complex debugging (after failures), security, performance, multi-system tradeoffs.",
+                "",
+                "## Annotation rules",
+                "1. Place `[tier:X]` at the START of each step, before the description",
+                "2. Research/exploration -> `[tier:fast]` (preferred)",
+                "3. Implementation/code -> `[tier:medium]` (preferred)",
+                "4. Architecture/security/hard debugging -> `[tier:heavy]`",
+                "5. If a step mixes exploration AND implementation, prefer splitting it into two steps when it improves delegation clarity",
+                "6. Verification (run tests, build) -> `[tier:medium]`",
+                "7. Trivial (single grep or file read) -> `[tier:fast]`",
+                "8. Final review of the complete plan -> `[tier:heavy]`",
+                "",
+                "## Output",
+                "Rewrite the entire plan in the file with the tags. Do not change the substance — only add tags, and split mixed steps when useful for clearer delegation.",
+            ].join("\n"),
+            description: "Annotate a plan with [tier:fast/medium/heavy] delegation tags",
+        },
+    };
+}
 // ---------------------------------------------------------------------------
 // Config loader with caching
 // ---------------------------------------------------------------------------
@@ -53,12 +100,24 @@ function buildInfoPath() {
     return join(getSourceDir(), "generated", "build-info.json");
 }
 function getSourceDir() {
+    const commonJsDir = getCommonJsDirname();
+    if (commonJsDir) {
+        return commonJsDir;
+    }
     try {
         return dirname(fileURLToPath(import.meta.url));
     }
     catch {
         const cwd = safeCurrentWorkingDir();
         return cwd ? join(cwd, "src") : ".";
+    }
+}
+function getCommonJsDirname() {
+    try {
+        return typeof __dirname === "string" && __dirname ? __dirname : undefined;
+    }
+    catch {
+        return undefined;
     }
 }
 function safeCurrentWorkingDir() {
@@ -948,49 +1007,7 @@ const ModelRouterPlugin = (_ctx) => {
             warnIfProviderMetadataMissing(opencodeConfig, cfg, activeTiers);
             // Register commands
             opencodeConfig.command ??= {};
-            opencodeConfig.command["tiers"] = {
-                template: "",
-                description: "Show model delegation tiers and rules",
-            };
-            opencodeConfig.command["preset"] = {
-                template: "$ARGUMENTS",
-                description: "Show or switch model presets (e.g., /preset openai)",
-            };
-            opencodeConfig.command["budget"] = {
-                template: "$ARGUMENTS",
-                description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
-            };
-            opencodeConfig.command["bypass"] = {
-                template: "$ARGUMENTS",
-                description: "Toggle model-router bypass (disables delegation protocol for this session)",
-            };
-            opencodeConfig.command["annotate-plan"] = {
-                template: [
-                    "Annotate the plan with tier directives for model delegation.",
-                    "",
-                    'Plan file: "$ARGUMENTS"',
-                    "If no file was specified, search for the active plan: PLAN.md, plan.md, or the most recent .md with 'plan' in the name in the current directory or project root.",
-                    "",
-                    "## Available tiers",
-                    "- `[tier:fast]` — Fast/cheap model: exploration, search, file reads, grep, listing, research. Agent does NOT edit code.",
-                    "- `[tier:medium]` — Balanced model: implementation, refactoring, tests, code review, bug fixes, standard coding tasks.",
-                    "- `[tier:heavy]` — Most capable model: architecture, complex debugging (after failures), security, performance, multi-system tradeoffs.",
-                    "",
-                    "## Annotation rules",
-                    "1. Place `[tier:X]` at the START of each step, before the description",
-                    "2. Research/exploration -> `[tier:fast]` (preferred)",
-                    "3. Implementation/code -> `[tier:medium]` (preferred)",
-                    "4. Architecture/security/hard debugging -> `[tier:heavy]`",
-                    "5. If a step mixes exploration AND implementation, prefer splitting it into two steps when it improves delegation clarity",
-                    "6. Verification (run tests, build) -> `[tier:medium]`",
-                    "7. Trivial (single grep or file read) -> `[tier:fast]`",
-                    "8. Final review of the complete plan -> `[tier:heavy]`",
-                    "",
-                    "## Output",
-                    "Rewrite the entire plan in the file with the tags. Do not change the substance — only add tags, and split mixed steps when useful for clearer delegation.",
-                ].join("\n"),
-                description: "Annotate a plan with [tier:fast/medium/heavy] delegation tags",
-            };
+            Object.assign(opencodeConfig.command, getRouterCommandSpecs());
             return opencodeConfig;
         },
         // -----------------------------------------------------------------------
@@ -1081,8 +1098,31 @@ const ModelRouterPlugin = (_ctx) => {
     };
 };
 export default ModelRouterPlugin;
+export const server = ModelRouterPlugin;
+ModelRouterPlugin.server =
+    ModelRouterPlugin;
 ModelRouterPlugin.version =
     routerVersion;
+export const tui = async (api) => {
+    const register = api?.command?.register;
+    if (typeof register !== "function")
+        return;
+    register(() => Object.entries(getRouterCommandSpecs()).map(([name, spec]) => ({
+        title: `/${name}`,
+        value: `model-router.${name}`,
+        description: spec.description,
+        category: "Model Router",
+        suggested: true,
+        slash: { name },
+        onSelect: async () => {
+            if (!api?.client?.tui)
+                return;
+            await api.client.tui.clearPrompt?.();
+            await api.client.tui.appendPrompt?.({ text: `/${name}` });
+            await api.client.tui.submitPrompt?.();
+        },
+    })));
+};
 export function buildAgentDefinition(name, tier, cfg) {
     const providerAdapter = resolveProviderAdapter(tier.model);
     const resolvedPrompt = tier.prompt ?? cfg.tierPrompts?.[name];
