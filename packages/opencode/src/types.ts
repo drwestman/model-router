@@ -31,6 +31,7 @@ export interface ModeConfig {
   defaultTier: string;
   description: string;
   overrideRules?: string[];
+  tierPrompts?: Record<string, string>;
 }
 
 export interface RouterConfig {

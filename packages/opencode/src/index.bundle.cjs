@@ -237,6 +237,16 @@ var import_url = require("url");
 var import_meta = {};
 var routerBuildInfo = loadRouterBuildInfo();
 var routerVersion = routerBuildInfo.fullVersion;
+var PONYTAIL_MODE_NAME = "ponytail";
+var PONYTAIL_ENABLED_TIERS = /* @__PURE__ */ new Set(["fast", "medium", "heavy"]);
+var PONYTAIL_REVIEW_TEMPLATE = [
+  "Review the current code changes for over-engineering only \u2014 not correctness.",
+  "One finding per line: <path>:L<line or range>: <tag>: <what to cut>. <replacement or nothing>.",
+  "Tags: delete, stdlib, native, yagni, shrink.",
+  "Only call out simplification opportunities.",
+  "End with `net: -<N> lines possible.`",
+  "If there is nothing to cut, reply exactly: `Lean already. Ship.`"
+].join("\n");
 function getRouterCommandSpecs() {
   return {
     tiers: {
@@ -249,11 +259,15 @@ function getRouterCommandSpecs() {
     },
     budget: {
       template: "$ARGUMENTS",
-      description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)"
+      description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget ponytail)"
     },
     bypass: {
       template: "$ARGUMENTS",
       description: "Toggle model-router bypass (disables delegation protocol for this session)"
+    },
+    "ponytail-review": {
+      template: PONYTAIL_REVIEW_TEMPLATE,
+      description: "Transient over-engineering review with Ponytail tags"
     },
     "annotate-plan": {
       template: [
@@ -537,6 +551,22 @@ function validateConfig(raw) {
           `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`
         );
       }
+      if (m.tierPrompts !== void 0) {
+        if (typeof m.tierPrompts !== "object" || m.tierPrompts === null || Array.isArray(m.tierPrompts)) {
+          throw new Error(
+            `tiers.json: mode '${modeName}.tierPrompts' must be an object`
+          );
+        }
+        for (const [tierName, prompt] of Object.entries(
+          m.tierPrompts
+        )) {
+          if (typeof prompt !== "string") {
+            throw new Error(
+              `tiers.json: mode '${modeName}.tierPrompts.${tierName}' must be a string`
+            );
+          }
+        }
+      }
     }
   }
   if (obj.tierCaps !== void 0) {
@@ -764,6 +794,22 @@ ${normalizedPrompt}`;
 function getActiveMode(cfg) {
   if (!cfg.modes || !cfg.activeMode) return void 0;
   return cfg.modes[cfg.activeMode];
+}
+function buildPonytailPrompt(tierName, cfg) {
+  if (cfg.activeMode !== PONYTAIL_MODE_NAME || !tierName) return void 0;
+  if (!PONYTAIL_ENABLED_TIERS.has(tierName)) return void 0;
+  const mode = getActiveMode(cfg);
+  const tierNote = mode?.tierPrompts?.[tierName];
+  if (!tierNote) return void 0;
+  return [
+    "PONYTAIL MODE \u2014 prefer the simplest, shortest path that actually works.",
+    "Keep your existing STOP CONDITIONS, role boundaries, and return protocol exactly as-is.",
+    "Do not rename or replace required prefixes such as DONE:, NEED MORE:, NEED CONTEXT:, SCOPE GROWTH:, or ESCALATE:.",
+    "Before adding or keeping code, ask in order: can this be deleted, can stdlib do it, can a native platform feature do it, can the same result be done in fewer lines.",
+    "Prefer no unrequested abstractions, no speculative flexibility, no avoidable dependencies, and no boilerplate.",
+    "If two stdlib options are the same size, pick the one that stays correct on edge cases.",
+    tierNote
+  ].join("\n");
 }
 function buildFallbackInstructions(cfg) {
   const fb = cfg.fallback;
@@ -1160,7 +1206,16 @@ ${banner}` : banner;
       } catch {
       }
       const sessionID = _input?.sessionID;
-      if (sessionID && subagentSessionIDs.has(sessionID)) return;
+      if (sessionID && subagentSessionIDs.has(sessionID)) {
+        const ponytailPrompt = buildPonytailPrompt(
+          subagentCapState.get(sessionID)?.tierName,
+          cfg
+        );
+        if (ponytailPrompt) {
+          output.system.push(ponytailPrompt);
+        }
+        return;
+      }
       const providerID = _input?.model?.providerID ?? "";
       const modelID = _input?.model?.modelID ?? "";
       const orchestratorModel = providerID && modelID ? `${providerID}/${modelID}` : modelID;

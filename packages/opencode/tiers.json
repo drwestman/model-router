@@ -279,6 +279,15 @@
         "subagents still run redundancy check; CAP:none only lifts the numeric cap, not the stop-on-redundancy rule"
       ]
     },
+    "ponytail": {
+      "defaultTier": "medium",
+      "description": "Lean/minimal mode — keeps routing behavior but pushes fast/medium/heavy toward deletion, stdlib/native reuse, and the shortest correct result",
+      "tierPrompts": {
+        "fast": "For read-only work, bias findings toward deletions, stdlib/native replacements, and smaller paths.",
+        "medium": "For implementation, ship the shortest correct diff that solves the asked problem without extra abstraction.",
+        "heavy": "For analysis, recommend the leanest design that covers the real requirement and cut speculative complexity."
+      }
+    },
     "deep": {
       "defaultTier": "heavy",
       "description": "Deep analysis mode — prioritizes thorough architecture/debug work with long heavy runs",
