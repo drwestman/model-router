@@ -44,7 +44,7 @@ Register the OpenCode plugin in the documented global plugin directory:
 npm run install-opencode:local
 ```
 
-This writes `~/.config/opencode/plugins/model-router.js` and `~/.config/opencode/plugins/package.json`, which make the global plugin directory load as ESM and point at the built adapter from this workspace. Do not also list `"model-router"` in an OpenCode `plugin` array; that uses npm-plugin loading instead of the local plugin directory.
+This writes `~/.config/opencode/plugins/model-router.js` as a CommonJS loader that dynamically imports the built adapter from this workspace. Do not also list `"model-router"` in an OpenCode `plugin` array; that uses npm-plugin loading instead of the local plugin directory.
 
 ## Verification
 

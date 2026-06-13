@@ -5,4 +5,8 @@ const pluginExport =
   typeof pluginModule === "function" ? pluginModule : pluginModule.default;
 
 module.exports = pluginExport;
-Object.assign(module.exports, pluginModule);
+for (const key of Object.keys(pluginModule)) {
+  if (key !== "default" && !(key in pluginExport)) {
+    pluginExport[key] = pluginModule[key];
+  }
+}

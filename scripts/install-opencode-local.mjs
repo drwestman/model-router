@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -14,19 +14,14 @@ const pluginSourceUrl = pathToFileURL(pluginSourcePath).href;
 try {
   mkdirSync(globalPluginDir, { recursive: true });
   writeFileSync(
-    globalPluginPackagePath,
-    `${JSON.stringify({ type: "module" }, null, 2)}\n`,
-    "utf8",
-  );
-  writeFileSync(
     globalPluginPath,
     [
       `const pluginSourceUrl = ${JSON.stringify(pluginSourceUrl)};`,
       "",
-      "export default async function ModelRouterPlugin(ctx) {",
+      "module.exports = async function ModelRouterPlugin(ctx) {",
       "  const pluginModule = await import(pluginSourceUrl);",
       "  return pluginModule.default(ctx);",
-      "}",
+      "};",
       "",
     ].join("\n"),
     "utf8",
@@ -37,6 +32,19 @@ try {
   );
   process.exit(1);
 }
+
+try {
+  const raw = JSON.parse(readFileSync(globalPluginPackagePath, "utf8"));
+  if (
+    raw &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    raw.type === "module" &&
+    Object.keys(raw).length === 1
+  ) {
+    rmSync(globalPluginPackagePath);
+  }
+} catch {}
 
 const globalConfigPath = join(globalConfigDir, "opencode.json");
 const stalePluginWarnings = [];
