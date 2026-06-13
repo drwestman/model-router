@@ -98,6 +98,15 @@
     "quality": {
       "defaultTier": "heavy",
       "description": "Prefer stronger tiers for difficult work"
+    },
+    "ponytail": {
+      "defaultTier": "medium",
+      "description": "Inject Ponytail guidance for delegated subagents only",
+      "tierPrompts": {
+        "fast": "Fixture Ponytail fast guidance.",
+        "medium": "Fixture Ponytail medium guidance.",
+        "heavy": "Fixture Ponytail heavy guidance."
+      }
     }
   },
   "tierPrompts": {

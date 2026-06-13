@@ -212,7 +212,14 @@ Then("the registered agents should match the active fixture preset", function (t
 Then("the router commands should be registered", function (this: RouterWorld) {
   const commands = this.registeredConfig.command as Record<string, unknown>;
   assert.ok(commands, "commands missing");
-  for (const name of ["tiers", "preset", "budget", "bypass", "annotate-plan"]) {
+  for (const name of [
+    "tiers",
+    "preset",
+    "budget",
+    "bypass",
+    "ponytail-review",
+    "annotate-plan",
+  ]) {
     assert.ok(commands[name], `missing command: ${name}`);
   }
 });

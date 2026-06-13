@@ -39,6 +39,17 @@ type RouterCommandSpec = {
   description: string;
 };
 
+const PONYTAIL_MODE_NAME = "ponytail";
+const PONYTAIL_ENABLED_TIERS = new Set(["fast", "medium", "heavy"]);
+const PONYTAIL_REVIEW_TEMPLATE = [
+  "Review the current code changes for over-engineering only — not correctness.",
+  "One finding per line: <path>:L<line or range>: <tag>: <what to cut>. <replacement or nothing>.",
+  "Tags: delete, stdlib, native, yagni, shrink.",
+  "Only call out simplification opportunities.",
+  "End with `net: -<N> lines possible.`",
+  "If there is nothing to cut, reply exactly: `Lean already. Ship.`",
+].join("\n");
+
 function getRouterCommandSpecs(): Record<string, RouterCommandSpec> {
   return {
     tiers: {
@@ -52,12 +63,16 @@ function getRouterCommandSpecs(): Record<string, RouterCommandSpec> {
     budget: {
       template: "$ARGUMENTS",
       description:
-        "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
+        "Show or switch routing mode (e.g., /budget, /budget budget, /budget ponytail)",
     },
     bypass: {
       template: "$ARGUMENTS",
       description:
         "Toggle model-router bypass (disables delegation protocol for this session)",
+    },
+    "ponytail-review": {
+      template: PONYTAIL_REVIEW_TEMPLATE,
+      description: "Transient over-engineering review with Ponytail tags",
     },
     "annotate-plan": {
       template: [
@@ -414,6 +429,27 @@ export function validateConfig(raw: unknown): RouterConfig {
           `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`,
         );
       }
+      if (m.tierPrompts !== undefined) {
+        if (
+          typeof m.tierPrompts !== "object" ||
+          m.tierPrompts === null ||
+          Array.isArray(m.tierPrompts)
+        ) {
+          throw new Error(
+            `tiers.json: mode '${modeName}.tierPrompts' must be an object`,
+          );
+        }
+
+        for (const [tierName, prompt] of Object.entries(
+          m.tierPrompts as Record<string, unknown>,
+        )) {
+          if (typeof prompt !== "string") {
+            throw new Error(
+              `tiers.json: mode '${modeName}.tierPrompts.${tierName}' must be a string`,
+            );
+          }
+        }
+      }
     }
   }
 
@@ -759,6 +795,25 @@ export function composePrompt(
 function getActiveMode(cfg: RouterConfig): ModeConfig | undefined {
   if (!cfg.modes || !cfg.activeMode) return undefined;
   return cfg.modes[cfg.activeMode];
+}
+
+function buildPonytailPrompt(tierName: string | undefined, cfg: RouterConfig): string | undefined {
+  if (cfg.activeMode !== PONYTAIL_MODE_NAME || !tierName) return undefined;
+  if (!PONYTAIL_ENABLED_TIERS.has(tierName)) return undefined;
+
+  const mode = getActiveMode(cfg);
+  const tierNote = mode?.tierPrompts?.[tierName];
+  if (!tierNote) return undefined;
+
+  return [
+    "PONYTAIL MODE — prefer the simplest, shortest path that actually works.",
+    "Keep your existing STOP CONDITIONS, role boundaries, and return protocol exactly as-is.",
+    "Do not rename or replace required prefixes such as DONE:, NEED MORE:, NEED CONTEXT:, SCOPE GROWTH:, or ESCALATE:.",
+    "Before adding or keeping code, ask in order: can this be deleted, can stdlib do it, can a native platform feature do it, can the same result be done in fewer lines.",
+    "Prefer no unrequested abstractions, no speculative flexibility, no avoidable dependencies, and no boilerplate.",
+    "If two stdlib options are the same size, pick the one that stays correct on edge cases.",
+    tierNote,
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -1304,10 +1359,17 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
         // Use last known config if file read fails
       }
 
-      // Skip injection for child (subagent) sessions.
-      // Child sessions are detected via session.created events with a parentID.
       const sessionID = _input?.sessionID;
-      if (sessionID && subagentSessionIDs.has(sessionID)) return;
+      if (sessionID && subagentSessionIDs.has(sessionID)) {
+        const ponytailPrompt = buildPonytailPrompt(
+          subagentCapState.get(sessionID)?.tierName,
+          cfg,
+        );
+        if (ponytailPrompt) {
+          output.system.push(ponytailPrompt);
+        }
+        return;
+      }
 
       const providerID = _input?.model?.providerID ?? "";
       const modelID = _input?.model?.modelID ?? "";
