@@ -1,0 +1,34 @@
+{
+  "name": "model-router",
+  "version": "1.1.16",
+  "description": "Injects model-router routing guidance and Claude control commands.",
+  "author": {
+    "name": "David Westman"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/activate.js",
+            "timeout": 5,
+            "statusMessage": "Loading model-router..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/prompt-submit.js",
+            "timeout": 5,
+            "statusMessage": "Applying model-router..."
+          }
+        ]
+      }
+    ]
+  }
+}

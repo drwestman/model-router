@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "model-router",
+  "description": "Model routing guidance and Claude control commands for fast, medium, and heavy work.",
+  "owner": {
+    "name": "David Westman",
+    "url": "https://github.com/drwestman"
+  },
+  "plugins": [
+    {
+      "name": "model-router",
+      "description": "Injects model-router routing guidance and Claude control commands.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
