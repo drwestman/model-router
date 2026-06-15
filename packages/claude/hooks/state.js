@@ -54,8 +54,16 @@ function saveState(config, input) {
 
   const tempPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;
 
-  fs.writeFileSync(tempPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  fs.renameSync(tempPath, statePath);
+  try {
+    fs.writeFileSync(tempPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    fs.renameSync(tempPath, statePath);
+  } catch (error) {
+    try {
+      fs.rmSync(tempPath, { force: true });
+    } catch {}
+
+    throw error;
+  }
 
   return next;
 }

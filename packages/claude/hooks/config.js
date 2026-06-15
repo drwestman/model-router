@@ -26,7 +26,7 @@ function listPresetNames(config) {
 }
 
 function listModeNames(preset) {
-  return Object.keys(preset.modes);
+  return preset?.modes ? Object.keys(preset.modes) : [];
 }
 
 function listGlobalModeNames(config) {
@@ -49,10 +49,15 @@ function defaultModeForPreset(config, presetName) {
 
 function loadConfig() {
   const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const presets = parsed?.presets;
-  const modes = parsed?.modes;
-  const tierCaps = parsed?.tierCaps;
-  const rules = Array.isArray(parsed?.rules) ? parsed.rules : [];
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    fail("tiers.json must be a valid JSON object.");
+  }
+
+  const presets = parsed.presets;
+  const modes = parsed.modes;
+  const tierCaps = parsed.tierCaps;
+  const rules = Array.isArray(parsed.rules) ? parsed.rules : [];
 
   if (!presets || Array.isArray(presets) || Object.keys(presets).length === 0) {
     fail("tiers.json must define at least one preset.");
@@ -77,13 +82,18 @@ function loadConfig() {
       : Object.keys(modes)[0];
 
   const normalized = { defaultPreset, defaultMode, presets, modes, rules, tierCaps };
-  const preset = getPreset(normalized, defaultPreset);
 
   for (const presetName of Object.keys(presets)) {
     const currentPreset = presets[presetName];
 
     if (!currentPreset?.tiers || Object.keys(currentPreset.tiers).length === 0) {
       fail(`preset '${presetName}' must define tiers.`);
+    }
+
+    for (const tierName of ["fast", "medium", "heavy"]) {
+      if (typeof currentPreset.tiers[tierName]?.model !== "string") {
+        fail(`preset '${presetName}' must define a model for tier '${tierName}'.`);
+      }
     }
   }
 
