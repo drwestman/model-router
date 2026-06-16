@@ -6,7 +6,13 @@ const { emit } = require("./output");
 const { loadState } = require("./state");
 
 function readPrompt() {
-  const input = fs.readFileSync(0, "utf8");
+  let input;
+
+  try {
+    input = fs.readFileSync(0, "utf8");
+  } catch {
+    return null;
+  }
 
   if (!input.trim()) {
     return null;

@@ -44,7 +44,7 @@ function addZipEntries(zipFile, baseDir, relativePath) {
     return;
   }
 
-  zipFile.addFile(fullPath, normalizedPath, { ...metadata, compress: false });
+  zipFile.addFile(fullPath, normalizedPath, { ...metadata, compress: true });
 }
 
 function writeZipArchive(archivePath, baseDir, rootEntry) {

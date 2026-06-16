@@ -24,6 +24,18 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function compileKeywordRegexes(keywords) {
+  return keywords.map((keyword) => {
+    const pattern = keyword
+      .trim()
+      .split(/\s+/)
+      .map(escapeRegExp)
+      .join("\\s+");
+
+    return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`);
+  });
+}
+
 function handlePreset(config, state, args) {
   const presetName = args[0];
 
@@ -111,30 +123,26 @@ const HEAVY_KEYWORDS = [
   "complex debug",
 ];
 
-function includesKeyword(text, keywords) {
-  return keywords.some((keyword) => {
-    const pattern = keyword
-      .trim()
-      .split(/\s+/)
-      .map(escapeRegExp)
-      .join("\\s+");
+const FAST_KEYWORD_REGEXES = compileKeywordRegexes(FAST_KEYWORDS);
+const MEDIUM_KEYWORD_REGEXES = compileKeywordRegexes(MEDIUM_KEYWORDS);
+const HEAVY_KEYWORD_REGEXES = compileKeywordRegexes(HEAVY_KEYWORDS);
 
-    return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`).test(text);
-  });
+function includesKeyword(text, regexes) {
+  return regexes.some((regex) => regex.test(text));
 }
 
 function getPlanTier(step) {
   const text = step.toLowerCase();
 
-  if (includesKeyword(text, HEAVY_KEYWORDS)) {
+  if (includesKeyword(text, HEAVY_KEYWORD_REGEXES)) {
     return "heavy";
   }
 
-  if (includesKeyword(text, MEDIUM_KEYWORDS)) {
+  if (includesKeyword(text, MEDIUM_KEYWORD_REGEXES)) {
     return "medium";
   }
 
-  if (includesKeyword(text, FAST_KEYWORDS)) {
+  if (includesKeyword(text, FAST_KEYWORD_REGEXES)) {
     return "fast";
   }
 
