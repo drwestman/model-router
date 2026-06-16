@@ -2,7 +2,7 @@
   "name": "@drwestman/model-router-claude",
   "version": "1.1.16",
   "private": true,
-  "description": "Private Claude adapter scaffold for model-router",
+  "description": "Private Claude hook plugin for model-router",
   "type": "module",
   "main": "./src/index.ts",
   "exports": "./src/index.ts",

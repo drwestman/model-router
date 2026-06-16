@@ -1,13 +1,18 @@
-# @drwestman/model-router-claude
+# Claude package
 
-Claude adapter scaffold for the monorepo.
+This package ships the Claude plugin variant of model-router.
 
-The host integration is intentionally not implemented yet because this repo does not currently define the Claude host API surface.
+## Installed command surface
 
-This private workspace package reserves the adapter boundary and adapter-local configuration.
+After install, Claude exposes the plugin skills as namespaced commands:
 
-Current scope:
+- `/model-router:tiers`
+- `/model-router:preset <preset-name>`
+- `/model-router:mode <mode-name>`
+- `/model-router:bypass on|off`
+- `/model-router:annotate-plan <plan text>`
+- `/model-router:ponytail-review <change summary>`
 
-- adapter-local `tiers.json`
-- package metadata
-- explicit placeholder entrypoint
+These commands are backed by plugin skills under `skills/` and a shared runner under `hooks/run-command.js`.
+
+The existing prompt hook compatibility commands (`/tiers`, `/preset`, `/mode`, `/bypass`, `/annotate-plan`, `/ponytail-review`) remain available when typed directly in Claude.

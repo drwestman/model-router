@@ -1,6 +1,6 @@
 # model-router monorepo
 
-This repository is now an npm workspace monorepo with lockstep versioning.
+This repository is an npm workspace monorepo with lockstep versioning.
 
 ## Workspace packages
 
@@ -15,8 +15,9 @@ All packages are currently private.
 
 - `core` contains host-agnostic config validation, policy resolution, prompt rendering, model normalization, and generic state helpers.
 - `opencode` is the active implemented adapter package with adapter-local config and host-isolated state defaults.
-- `claude` and `codex` are honest scaffolds only. They include separate `tiers.json` files and package metadata, but they do not claim unsupported host integrations.
-- The root package is now only the private workspace container. Runtime code lives under `packages/`.
+- `claude` is an implemented private Claude plugin package with hook integration, plugin metadata, skills, and local install/package workflows.
+- `codex` is still a scaffold package with separate `tiers.json` and package metadata, but no claimed host integration yet.
+- The root package is only the private workspace container. Runtime code lives under `packages/`.
 
 ## Config and state
 
@@ -27,7 +28,7 @@ All packages are currently private.
 Default state locations are isolated per host:
 
 - OpenCode: `~/.config/opencode/opencode-model-router.state.json`
-- Claude: `~/.config/claude/claude-model-router.state.json`
+- Claude: `~/.config/claude/model-router.state.json`
 - Codex: `~/.config/codex/codex-model-router.state.json`
 
 ## Install
@@ -45,6 +46,22 @@ npm run install-opencode:local
 ```
 
 This writes `~/.config/opencode/plugins/model-router.js` as a CommonJS loader that dynamically imports the built adapter from this workspace. Do not also list `"model-router"` in an OpenCode `plugin` array; that uses npm-plugin loading instead of the local plugin directory.
+
+## Claude local install
+
+Install the Claude plugin from this workspace into your local Claude config:
+
+```bash
+npm run install:claude-plugin:local
+```
+
+## Claude packaging
+
+Build the Claude plugin as a distributable tarball artifact:
+
+```bash
+npm run package:claude-plugin
+```
 
 ## Verification
 

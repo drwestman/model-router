@@ -1,5 +1,6 @@
 {
-  "activePreset": "anthropic",
+  "defaultPreset": "anthropic",
+  "defaultMode": "normal",
   "tierCaps": {
     "fast": 8,
     "medium": 5,
@@ -7,36 +8,49 @@
   },
   "presets": {
     "anthropic": {
-      "fast": {
-        "model": "anthropic/claude-haiku-4-5",
-        "description": "Claude fast exploration tier",
-        "whenToUse": [
-          "Search",
-          "Read-only exploration"
-        ]
-      },
-      "medium": {
-        "model": "anthropic/claude-sonnet-4-6",
-        "description": "Claude implementation tier",
-        "whenToUse": [
-          "Implementation",
-          "Refactoring",
-          "Tests"
-        ]
-      },
-      "heavy": {
-        "model": "anthropic/claude-opus-4-6",
-        "description": "Claude deep analysis tier",
-        "whenToUse": [
-          "Architecture",
-          "Complex debugging"
-        ]
+      "label": "Anthropic",
+      "tiers": {
+        "fast": {
+          "model": "anthropic/claude-haiku-4-5",
+          "description": "Quick search, exploration, and read-only work."
+        },
+        "medium": {
+          "model": "anthropic/claude-sonnet-4-6",
+          "description": "Default implementation, refactoring, and test work."
+        },
+        "heavy": {
+          "model": "anthropic/claude-opus-4-6",
+          "description": "Deep analysis, debugging, and architecture work."
+        }
       }
     }
   },
+  "modes": {
+    "normal": {
+      "defaultTier": "medium",
+      "description": "Balanced default routing by task complexity."
+    },
+    "budget": {
+      "defaultTier": "fast",
+      "description": "Cheapest-first routing with tighter delegation."
+    },
+    "quality": {
+      "defaultTier": "heavy",
+      "description": "Quality-first routing that escalates aggressively."
+    },
+    "ponytail": {
+      "defaultTier": "medium",
+      "description": "Prefer the shortest correct path, deletion, stdlib, and low ceremony."
+    },
+    "deep": {
+      "defaultTier": "heavy",
+      "description": "Use deep analysis for multi-step debugging and architecture work."
+    }
+  },
   "rules": [
-    "scaffold package only",
-    "adapter-specific integration still required"
-  ],
-  "defaultTier": "medium"
+    "Read-only exploration should favor the fast tier.",
+    "Implementation should default to medium unless the active mode says otherwise.",
+    "Architecture, security, and multi-system debugging should escalate to heavy.",
+    "Keep prompts concise and prefer the smallest correct change."
+  ]
 }
