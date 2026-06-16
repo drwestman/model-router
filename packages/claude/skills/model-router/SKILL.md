@@ -1,14 +1,19 @@
-# Model Router
+---
+description: Show the installed model-router Claude plugin command surface and when to use each namespaced command.
+disable-model-invocation: true
+---
 
-Use model-router session commands to inspect or change the active Claude routing state.
+# model-router Claude commands
 
-Commands:
+Use the plugin skills directly after install:
 
-- `/tiers` shows available presets and modes
-- `/preset <name>` switches the active preset
-- `/mode <name>` switches the active routing mode
-- `/bypass on|off` disables or re-enables routing output
-- `/annotate-plan <text>` tags plan steps with `[tier:fast]`, `[tier:medium]`, or `[tier:heavy]`
-- `/ponytail-review [text]` returns a short simplicity review or checklist
+- `/model-router:tiers` — show current preset, mode, bypass, and tier models
+- `/model-router:preset <preset-name>` — switch the active preset
+- `/model-router:mode <mode-name>` — switch the active mode
+- `/model-router:bypass on|off` — toggle routing bypass
+- `/model-router:annotate-plan <plan text>` — tag plan steps with fast/medium/heavy
+- `/model-router:ponytail-review <change summary>` — cut scope to the smallest viable change
 
-State persists in `~/.config/claude/model-router.state.json`.
+Legacy hook commands like `/tiers` and `/preset <name>` still work when typed directly, but the namespaced plugin skills above are the discoverable installed command surface.
+
+If a namespaced command reports that skill shell execution is disabled, enable Claude Code skill shell execution for this plugin.

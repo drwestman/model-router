@@ -11,6 +11,19 @@ function usage(command, values) {
   return `[model-router] usage: ${command} ${values}`;
 }
 
+const COMMAND_HANDLERS = {
+  tiers: (config, state) => buildTiersText(config, state),
+  preset: (config, state, argText, args) => handlePreset(config, state, args),
+  mode: (config, state, argText, args) => handleMode(config, state, args),
+  bypass: (config, state, argText, args) => handleBypass(config, state, args),
+  "annotate-plan": (config, state, argText) => handleAnnotatePlan(argText),
+  "ponytail-review": (config, state, argText) => handlePonytailReview(argText),
+};
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function handlePreset(config, state, args) {
   const presetName = args[0];
 
@@ -99,7 +112,15 @@ const HEAVY_KEYWORDS = [
 ];
 
 function includesKeyword(text, keywords) {
-  return keywords.some((keyword) => text.includes(keyword));
+  return keywords.some((keyword) => {
+    const pattern = keyword
+      .trim()
+      .split(/\s+/)
+      .map(escapeRegExp)
+      .join("\\s+");
+
+    return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`).test(text);
+  });
 }
 
 function getPlanTier(step) {
@@ -135,7 +156,7 @@ function getPlanSteps(text) {
   }
 
   return trimmed
-    .split(/[;,]/)
+    .split(";")
     .map((step) => step.trim())
     .filter(Boolean);
 }
@@ -209,6 +230,43 @@ function handlePonytailReview(argText) {
   ].join("\n");
 }
 
+function normalizeCommandName(command) {
+  if (typeof command !== "string") {
+    return null;
+  }
+
+  const trimmed = command.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const bare = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+
+  if (bare.startsWith("model-router:")) {
+    return bare.slice("model-router:".length);
+  }
+
+  if (bare.startsWith("model-router.")) {
+    return bare.slice("model-router.".length);
+  }
+
+  return bare;
+}
+
+function runCommand(config, state, command, argText = "") {
+  const commandName = normalizeCommandName(command);
+
+  if (!commandName) {
+    return null;
+  }
+
+  const args = argText.trim() ? argText.trim().split(/\s+/) : [];
+  const handler = COMMAND_HANDLERS[commandName];
+
+  return handler ? handler(config, state, argText, args) : null;
+}
+
 function handleCommand(config, state, prompt) {
   if (typeof prompt !== "string") {
     return null;
@@ -227,26 +285,12 @@ function handleCommand(config, state, prompt) {
   }
 
   const [, command, argText = ""] = match;
-  const args = argText.trim() ? argText.trim().split(/\s+/) : [];
 
-  switch (command) {
-    case "/tiers":
-      return buildTiersText(config, state);
-    case "/preset":
-      return handlePreset(config, state, args);
-    case "/mode":
-      return handleMode(config, state, args);
-    case "/bypass":
-      return handleBypass(config, state, args);
-    case "/annotate-plan":
-      return handleAnnotatePlan(argText);
-    case "/ponytail-review":
-      return handlePonytailReview(argText);
-    default:
-      return null;
-  }
+  return runCommand(config, state, command, argText);
 }
 
 module.exports = {
   handleCommand,
+  normalizeCommandName,
+  runCommand,
 };

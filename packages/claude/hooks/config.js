@@ -25,10 +25,6 @@ function listPresetNames(config) {
   return Object.keys(config.presets);
 }
 
-function listModeNames(preset) {
-  return preset?.modes ? Object.keys(preset.modes) : [];
-}
-
 function listGlobalModeNames(config) {
   return Object.keys(config.modes);
 }
@@ -111,7 +107,6 @@ module.exports = {
   getPreset,
   getTier,
   listGlobalModeNames,
-  listModeNames,
   listPresetNames,
   loadConfig,
 };
