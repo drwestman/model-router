@@ -29,18 +29,8 @@ function listGlobalModeNames(config) {
   return Object.keys(config.modes);
 }
 
-function defaultModeForPreset(config, presetName) {
-  const preset = getPreset(config, presetName);
-
-  if (!preset) {
-    return config.defaultMode;
-  }
-
-  if (config.modes[config.defaultMode]) {
-    return config.defaultMode;
-  }
-
-  return Object.keys(config.modes)[0];
+function defaultModeForPreset(config) {
+  return config.defaultMode;
 }
 
 function loadConfig() {

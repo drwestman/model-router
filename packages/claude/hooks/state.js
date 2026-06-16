@@ -11,7 +11,7 @@ const { defaultModeForPreset, getPreset } = require("./config");
 function defaultState(config) {
   return {
     activePreset: config.defaultPreset,
-    activeMode: defaultModeForPreset(config, config.defaultPreset),
+    activeMode: defaultModeForPreset(config),
     bypass: false,
   };
 }

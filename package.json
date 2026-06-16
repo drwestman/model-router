@@ -80,7 +80,9 @@
     "@cucumber/cucumber": "^12.2.0",
     "@types/node": "^25.2.3",
     "esbuild": "^0.27.0",
+    "tar": "^7.5.1",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yazl": "^3.3.1"
   }
 }

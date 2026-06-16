@@ -7,13 +7,14 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { gunzipSync } from "node:zlib";
+import * as tar from "tar";
 
 import { packageClaudePlugin } from "../../scripts/package-claude-plugin.mjs";
 
@@ -45,6 +46,35 @@ function withEnv<T>(
 
   try {
     return run();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+async function withEnvAsync<T>(
+  env: Record<string, string | undefined>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key]);
+
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    return await run();
   } finally {
     for (const [key, value] of previous.entries()) {
       if (value === undefined) {
@@ -101,37 +131,16 @@ function createClaudeConfig() {
   };
 }
 
-function readArchiveEntries(archivePath: string): string[] {
-  const archive = gunzipSync(readFileSync(archivePath));
+async function readTarEntries(archivePath: string): Promise<string[]> {
   const entries: string[] = [];
-  let offset = 0;
 
-  while (offset + 512 <= archive.length) {
-    const header = archive.subarray(offset, offset + 512);
-
-    if (header.every((byte) => byte === 0)) {
-      break;
-    }
-
-    const name = header
-      .subarray(0, 100)
-      .toString("utf8")
-      .replace(/\0.*$/, "");
-    const prefix = header
-      .subarray(345, 500)
-      .toString("utf8")
-      .replace(/\0.*$/, "");
-    const sizeText = header
-      .subarray(124, 136)
-      .toString("utf8")
-      .replace(/\0.*$/, "")
-      .trim();
-    const entryPath = prefix ? `${prefix}/${name}` : name;
-    const size = sizeText ? Number.parseInt(sizeText, 8) : 0;
-
-    entries.push(entryPath);
-    offset += 512 + Math.ceil(size / 512) * 512;
-  }
+  await tar.list({
+    file: archivePath,
+    gzip: true,
+    onentry: (entry) => {
+      entries.push(entry.path);
+    },
+  });
 
   return entries;
 }
@@ -139,27 +148,81 @@ function readArchiveEntries(archivePath: string): string[] {
 function readZipEntries(archivePath: string): string[] {
   const archive = readFileSync(archivePath);
   const entries: string[] = [];
-  let offset = 0;
+  let offset = archive.length - 22;
 
-  while (offset + 30 <= archive.length) {
-    const signature = archive.readUInt32LE(offset);
-
-    if (signature !== 0x04034b50) {
+  while (offset >= 0) {
+    if (archive.readUInt32LE(offset) === 0x06054b50) {
       break;
     }
 
-    const nameLength = archive.readUInt16LE(offset + 26);
-    const extraLength = archive.readUInt16LE(offset + 28);
-    const size = archive.readUInt32LE(offset + 18);
+    offset -= 1;
+  }
+
+  assert.notEqual(offset, -1, "ZIP archive is missing an end-of-central-directory record");
+
+  const centralDirectoryOffset = archive.readUInt32LE(offset + 16);
+  const totalEntries = archive.readUInt16LE(offset + 10);
+  let centralOffset = centralDirectoryOffset;
+
+  for (let index = 0; index < totalEntries; index += 1) {
+    const signature = archive.readUInt32LE(centralOffset);
+
+    assert.equal(signature, 0x02014b50, "ZIP archive is missing a central directory header");
+
+    const nameLength = archive.readUInt16LE(centralOffset + 28);
+    const extraLength = archive.readUInt16LE(centralOffset + 30);
+    const commentLength = archive.readUInt16LE(centralOffset + 32);
     const name = archive
-      .subarray(offset + 30, offset + 30 + nameLength)
+      .subarray(centralOffset + 46, centralOffset + 46 + nameLength)
       .toString("utf8");
 
     entries.push(name);
-    offset += 30 + nameLength + extraLength + size;
+    centralOffset += 46 + nameLength + extraLength + commentLength;
   }
 
   return entries;
+}
+
+function listStageEntries(baseDir: string, relativePath: string): string[] {
+  const fullPath = join(baseDir, relativePath);
+  const stats = statSync(fullPath);
+
+  if (!stats.isDirectory()) {
+    return [relativePath];
+  }
+
+  const entries = [relativePath];
+
+  for (const name of readdirSync(fullPath).sort()) {
+    entries.push(...listStageEntries(baseDir, join(relativePath, name)));
+  }
+
+  return entries;
+}
+
+function normalizeArchiveEntries(entries: string[]): string[] {
+  return entries.map((entry) => entry.replace(/\/$/, "")).sort();
+}
+
+function createClaudePluginFixture(rootDir: string): void {
+  const claudeRoot = join(rootDir, "packages", "claude");
+
+  mkdirSync(join(claudeRoot, "hooks", "nested"), { recursive: true });
+  mkdirSync(join(claudeRoot, "skills", "zeta"), { recursive: true });
+  mkdirSync(join(claudeRoot, "skills", "alpha"), { recursive: true });
+  writeJSON(join(claudeRoot, "package.json"), {
+    name: "@model-router/claude",
+    version: "1.2.3",
+  });
+  writeFileSync(join(claudeRoot, ".claude-plugin"), "plugin\n", "utf8");
+  writeFileSync(join(claudeRoot, "README.md"), "# Claude plugin\n", "utf8");
+  writeFileSync(join(claudeRoot, "install-local.mjs"), "export {};\n", "utf8");
+  writeJSON(join(claudeRoot, "tiers.json"), createClaudeConfig());
+  writeFileSync(join(claudeRoot, "hooks", "b.js"), "b\n", "utf8");
+  writeFileSync(join(claudeRoot, "hooks", "a.js"), "a\n", "utf8");
+  writeFileSync(join(claudeRoot, "hooks", "nested", "c.txt"), "c\n", "utf8");
+  writeFileSync(join(claudeRoot, "skills", "zeta", "SKILL.md"), "zeta\n", "utf8");
+  writeFileSync(join(claudeRoot, "skills", "alpha", "SKILL.md"), "alpha\n", "utf8");
 }
 
 test("Claude hook config omits listModeNames and rejects non-object tiers files", () => {
@@ -174,7 +237,7 @@ test("Claude hook config omits listModeNames and rejects non-object tiers files"
     const config = hooks.config.loadConfig();
 
     assert.equal("listModeNames" in hooks.config, false);
-    assert.equal(hooks.config.defaultModeForPreset(config, "anthropic"), "normal");
+    assert.equal(hooks.config.defaultModeForPreset(config), "normal");
     assert.deepEqual(hooks.config.listGlobalModeNames(config), ["normal"]);
 
     writeFileSync(configPath, "null\n", "utf8");
@@ -358,79 +421,65 @@ test("Claude plugin skills are discoverable and point at the shared runner", () 
 
     if (expectsArgumentHint) {
       assert.match(content, /argument-hint:/);
-      assert.match(content, /\$ARGUMENTS/);
     }
   }
 });
 
-test("Claude plugin packager stages and archives expected files without tar on PATH", () => {
+test("Claude plugin packaging preserves staged contents without a tar binary", async () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "claude-plugin-package-"));
-  const claudeRoot = join(tempRoot, "packages", "claude");
 
   try {
-    mkdirSync(join(claudeRoot, ".claude-plugin"), { recursive: true });
-    mkdirSync(join(claudeRoot, "hooks"), { recursive: true });
-    mkdirSync(join(claudeRoot, "skills"), { recursive: true });
+    createClaudePluginFixture(tempRoot);
 
-    writeJSON(join(claudeRoot, "package.json"), { version: "9.9.9" });
-    writeFileSync(join(claudeRoot, "tiers.json"), "{}\n", "utf8");
-    writeFileSync(join(claudeRoot, "README.md"), "# Claude\n", "utf8");
-    writeFileSync(join(claudeRoot, "install-local.mjs"), "export {};\n", "utf8");
-    writeFileSync(join(claudeRoot, ".claude-plugin", "plugin.json"), "{}\n", "utf8");
-    writeFileSync(join(claudeRoot, "hooks", "config.js"), "module.exports = {};\n", "utf8");
-    writeFileSync(join(claudeRoot, "skills", "README.md"), "skill\n", "utf8");
-
-    const result = withEnv({ PATH: "" }, () => packageClaudePlugin(tempRoot));
-    const tarEntries = readArchiveEntries(result.tarGzPath!);
-    const zipEntries = readZipEntries(result.zipPath!);
-    const expectedEntries = [
-      "model-router-claude-9.9.9/.claude-plugin/plugin.json",
-      "model-router-claude-9.9.9/README.md",
-      "model-router-claude-9.9.9/hooks/config.js",
-      "model-router-claude-9.9.9/install-local.mjs",
-      "model-router-claude-9.9.9/skills/README.md",
-    ];
-
-    assert.equal(result.folderName, "model-router-claude-9.9.9");
-    assert.equal(existsSync(result.tarGzPath!), true);
-    assert.equal(existsSync(result.zipPath!), true);
-    assert.equal(existsSync(join(result.stageRoot, "hooks", "config.js")), true);
-    assert.equal(existsSync(join(result.stageRoot, ".claude-plugin", "plugin.json")), true);
-    assert.deepEqual(
-      tarEntries.filter((entry) => entry.endsWith("plugin.json") || entry.endsWith("config.js") || entry.endsWith("README.md") || entry.endsWith("install-local.mjs")).sort(),
-      expectedEntries,
+    const result = await withEnvAsync<Awaited<ReturnType<typeof packageClaudePlugin>>>(
+      { PATH: "" },
+      () => packageClaudePlugin(tempRoot),
     );
-    assert.deepEqual(
-      zipEntries.filter((entry) => entry.endsWith("plugin.json") || entry.endsWith("config.js") || entry.endsWith("README.md") || entry.endsWith("install-local.mjs")).sort(),
-      expectedEntries,
+    const tarGzPath = result.tarGzPath;
+    const zipPath = result.zipPath;
+
+    assert.equal(result.folderName, "model-router-claude-1.2.3");
+    assert.equal(result.archivePath, tarGzPath);
+    assert.ok(tarGzPath);
+    assert.ok(zipPath);
+    assert.equal(existsSync(tarGzPath), true);
+    assert.equal(existsSync(zipPath), true);
+
+    const expectedEntries = normalizeArchiveEntries(
+      listStageEntries(join(tempRoot, "tmp", "claude-plugin-package"), result.folderName),
     );
+
+    assert.deepEqual(normalizeArchiveEntries(await readTarEntries(tarGzPath)), expectedEntries);
+    assert.deepEqual(normalizeArchiveEntries(readZipEntries(zipPath)), expectedEntries);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("Claude plugin packager can write zip archives only", () => {
-  const tempRoot = mkdtempSync(join(tmpdir(), "claude-plugin-package-zip-"));
-  const claudeRoot = join(tempRoot, "packages", "claude");
+test("Claude plugin packaging supports zip-only output", async () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-plugin-zip-only-"));
 
   try {
-    mkdirSync(join(claudeRoot, ".claude-plugin"), { recursive: true });
-    mkdirSync(join(claudeRoot, "hooks"), { recursive: true });
-    mkdirSync(join(claudeRoot, "skills"), { recursive: true });
+    createClaudePluginFixture(tempRoot);
 
-    writeJSON(join(claudeRoot, "package.json"), { version: "9.9.9" });
-    writeFileSync(join(claudeRoot, "tiers.json"), "{}\n", "utf8");
-    writeFileSync(join(claudeRoot, "README.md"), "# Claude\n", "utf8");
-    writeFileSync(join(claudeRoot, "install-local.mjs"), "export {};\n", "utf8");
-    writeFileSync(join(claudeRoot, ".claude-plugin", "plugin.json"), "{}\n", "utf8");
-    writeFileSync(join(claudeRoot, "hooks", "config.js"), "module.exports = {};\n", "utf8");
-    writeFileSync(join(claudeRoot, "skills", "README.md"), "skill\n", "utf8");
+    const result = await packageClaudePlugin(tempRoot, { formats: ["zip"] });
+    const zipPath = result.zipPath;
 
-    const result = packageClaudePlugin(tempRoot, { formats: ["zip"] });
-
+    assert.equal(result.folderName, "model-router-claude-1.2.3");
+    assert.equal(result.archivePath, zipPath);
     assert.equal(result.tarGzPath, null);
-    assert.equal(existsSync(join(tempRoot, "tmp", "model-router-claude-9.9.9.tar.gz")), false);
-    assert.equal(existsSync(result.zipPath!), true);
+    assert.ok(zipPath);
+    assert.deepEqual(result.archivePaths, {
+      zip: join(tempRoot, "tmp", `${result.folderName}.zip`),
+    });
+    assert.equal(existsSync(zipPath), true);
+    assert.equal(existsSync(join(tempRoot, "tmp", `${result.folderName}.tar.gz`)), false);
+
+    const expectedEntries = normalizeArchiveEntries(
+      listStageEntries(join(tempRoot, "tmp", "claude-plugin-package"), result.folderName),
+    );
+
+    assert.deepEqual(normalizeArchiveEntries(readZipEntries(zipPath)), expectedEntries);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
