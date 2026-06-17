@@ -21,9 +21,9 @@ var index_exports = {};
 __export(index_exports, {
   applyPersistedState: () => applyPersistedState,
   buildAgentDefinition: () => buildAgentDefinition,
-  buildBudgetOutput: () => buildBudgetOutput,
   buildCapBanner: () => buildCapBanner,
   buildDelegationProtocol: () => buildDelegationProtocol,
+  buildModeOutput: () => buildModeOutput,
   buildPresetOutput: () => buildPresetOutput,
   composePrompt: () => composePrompt,
   default: () => index_default,
@@ -41,10 +41,216 @@ __export(index_exports, {
   routerVersion: () => routerVersion,
   server: () => server,
   tui: () => tui,
-  validateConfig: () => validateConfig,
+  validateConfig: () => validateConfig2,
   writeStateFile: () => writeStateFile
 });
 module.exports = __toCommonJS(index_exports);
+
+// packages/core/src/index.ts
+var MODE_COMMAND_NAME = "mode";
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+function ensureObject(value, message) {
+  if (!isRecord(value)) {
+    throw new Error(message);
+  }
+  return value;
+}
+function validateTierConfig(presetName, tierName, value) {
+  const tier = ensureObject(
+    value,
+    `tiers.json: tier '${presetName}.${tierName}' must be an object`
+  );
+  if (typeof tier.model !== "string" || !tier.model.trim()) {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.model' must be a non-empty string`
+    );
+  }
+  if (typeof tier.description !== "string") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.description' must be a string`
+    );
+  }
+  if (!isStringArray(tier.whenToUse)) {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array of strings`
+    );
+  }
+  if (tier.variant !== void 0 && typeof tier.variant !== "string") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.variant' must be a string`
+    );
+  }
+  if (tier.color !== void 0 && typeof tier.color !== "string") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.color' must be a string`
+    );
+  }
+  if (tier.prompt !== void 0 && typeof tier.prompt !== "string") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.prompt' must be a string`
+    );
+  }
+  if (tier.costRatio !== void 0 && typeof tier.costRatio !== "number") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.costRatio' must be a number`
+    );
+  }
+  if (tier.steps !== void 0 && (typeof tier.steps !== "number" || !Number.isInteger(tier.steps) || tier.steps < 1)) {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.steps' must be a positive integer`
+    );
+  }
+  if (tier.thinking !== void 0) {
+    const thinking = ensureObject(
+      tier.thinking,
+      `tiers.json: '${presetName}.${tierName}.thinking' must be an object`
+    );
+    if (thinking.budgetTokens !== void 0 && typeof thinking.budgetTokens !== "number") {
+      throw new Error(
+        `tiers.json: '${presetName}.${tierName}.thinking.budgetTokens' must be a number`
+      );
+    }
+  }
+  if (tier.reasoning !== void 0) {
+    const reasoning = ensureObject(
+      tier.reasoning,
+      `tiers.json: '${presetName}.${tierName}.reasoning' must be an object`
+    );
+    if (reasoning.effort !== void 0 && reasoning.effort !== "low" && reasoning.effort !== "medium" && reasoning.effort !== "high") {
+      throw new Error(
+        `tiers.json: '${presetName}.${tierName}.reasoning.effort' must be a string`
+      );
+    }
+    if (reasoning.summary !== void 0 && reasoning.summary !== "auto" && reasoning.summary !== "always" && reasoning.summary !== "never") {
+      throw new Error(
+        `tiers.json: '${presetName}.${tierName}.reasoning.summary' must be a string`
+      );
+    }
+  }
+  return tier;
+}
+function validateConfig(raw) {
+  const obj = ensureObject(raw, "tiers.json: expected a JSON object at root");
+  if (typeof obj.activePreset !== "string" || !obj.activePreset.trim()) {
+    throw new Error("tiers.json: 'activePreset' must be a non-empty string");
+  }
+  if (obj.activeMode !== void 0 && typeof obj.activeMode !== "string") {
+    throw new Error("tiers.json: 'activeMode' must be a string");
+  }
+  const presets = ensureObject(obj.presets, "tiers.json: 'presets' must be a non-null object");
+  const normalizedPresets = {};
+  for (const [presetName, presetValue] of Object.entries(presets)) {
+    const preset = ensureObject(
+      presetValue,
+      `tiers.json: preset '${presetName}' must be an object`
+    );
+    const normalizedPreset = {};
+    for (const [tierName, tierValue] of Object.entries(preset)) {
+      normalizedPreset[tierName] = validateTierConfig(presetName, tierName, tierValue);
+    }
+    normalizedPresets[presetName] = normalizedPreset;
+  }
+  if (!isStringArray(obj.rules)) {
+    throw new Error("tiers.json: 'rules' must be an array of strings");
+  }
+  if (typeof obj.defaultTier !== "string") {
+    throw new Error("tiers.json: 'defaultTier' must be a string");
+  }
+  if (obj.modes !== void 0) {
+    const modes = ensureObject(obj.modes, "tiers.json: 'modes' must be an object");
+    for (const [modeName, value] of Object.entries(modes)) {
+      const mode = ensureObject(value, `tiers.json: mode '${modeName}' must be an object`);
+      if (typeof mode.defaultTier !== "string") {
+        throw new Error(`tiers.json: mode '${modeName}.defaultTier' must be a string`);
+      }
+      if (typeof mode.description !== "string") {
+        throw new Error(`tiers.json: mode '${modeName}.description' must be a string`);
+      }
+      if (mode.overrideRules !== void 0 && !isStringArray(mode.overrideRules)) {
+        throw new Error(
+          `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`
+        );
+      }
+      if (mode.tierPrompts !== void 0) {
+        const tierPrompts = ensureObject(
+          mode.tierPrompts,
+          `tiers.json: mode '${modeName}.tierPrompts' must be an object`
+        );
+        for (const [tierName, prompt] of Object.entries(tierPrompts)) {
+          if (typeof prompt !== "string") {
+            throw new Error(
+              `tiers.json: mode '${modeName}.tierPrompts.${tierName}' must be a string`
+            );
+          }
+        }
+      }
+    }
+  }
+  if (obj.tierCaps !== void 0) {
+    const caps = ensureObject(obj.tierCaps, "tiers.json: 'tierCaps' must be an object");
+    for (const [tierName, value] of Object.entries(caps)) {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+        throw new Error(`tiers.json: tierCaps.'${tierName}' must be a positive integer`);
+      }
+    }
+  }
+  if (obj.tierPrompts !== void 0) {
+    const prompts = ensureObject(
+      obj.tierPrompts,
+      "tiers.json: 'tierPrompts' must be an object"
+    );
+    for (const [tierName, value] of Object.entries(prompts)) {
+      if (typeof value !== "string") {
+        throw new Error(`tiers.json: tierPrompts.'${tierName}' must be a string`);
+      }
+    }
+  }
+  if (obj.taskPatterns !== void 0) {
+    const taskPatterns = ensureObject(
+      obj.taskPatterns,
+      "tiers.json: 'taskPatterns' must be an object"
+    );
+    for (const [tierName, value] of Object.entries(taskPatterns)) {
+      if (!isStringArray(value)) {
+        throw new Error(`tiers.json: taskPatterns.'${tierName}' must be an array of strings`);
+      }
+    }
+  }
+  if (obj.fallback !== void 0) {
+    ensureObject(obj.fallback, "tiers.json: 'fallback' must be an object");
+  }
+  const normalizedModes = obj.modes;
+  const normalizedTierCaps = obj.tierCaps;
+  const normalizedTierPrompts = obj.tierPrompts;
+  const normalizedTaskPatterns = obj.taskPatterns;
+  const normalizedFallback = obj.fallback;
+  return {
+    activePreset: obj.activePreset,
+    activeMode: obj.activeMode,
+    presets: normalizedPresets,
+    rules: obj.rules,
+    defaultTier: obj.defaultTier,
+    modes: normalizedModes,
+    tierCaps: normalizedTierCaps,
+    tierPrompts: normalizedTierPrompts,
+    taskPatterns: normalizedTaskPatterns,
+    fallback: normalizedFallback
+  };
+}
+function resolveModeName(cfg, requestedMode) {
+  if (!requestedMode || !cfg.modes) return void 0;
+  if (cfg.modes[requestedMode]) return requestedMode;
+  const normalized = requestedMode.trim().toLowerCase();
+  if (!normalized) return void 0;
+  return Object.keys(cfg.modes).find((name) => name.toLowerCase() === normalized);
+}
+
+// packages/opencode/src/index.ts
 var import_fs = require("fs");
 var import_os = require("os");
 var import_path = require("path");
@@ -257,9 +463,9 @@ function getRouterCommandSpecs() {
       template: "$ARGUMENTS",
       description: "Show or switch model presets (e.g., /preset openai)"
     },
-    budget: {
+    [MODE_COMMAND_NAME]: {
       template: "$ARGUMENTS",
-      description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget ponytail)"
+      description: "Show or switch routing mode (e.g., /mode, /mode budget, /mode ponytail)"
     },
     bypass: {
       template: "$ARGUMENTS",
@@ -476,139 +682,8 @@ function resolvePresetName(cfg, requestedPreset) {
     (name) => name.toLowerCase() === normalized
   );
 }
-function isStringArray(value) {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-function validateConfig(raw) {
-  if (typeof raw !== "object" || raw === null) {
-    throw new Error("tiers.json: expected a JSON object at root");
-  }
-  const obj = raw;
-  if (typeof obj.activePreset !== "string" || !obj.activePreset) {
-    throw new Error("tiers.json: 'activePreset' must be a non-empty string");
-  }
-  if (typeof obj.presets !== "object" || obj.presets === null || Array.isArray(obj.presets)) {
-    throw new Error("tiers.json: 'presets' must be a non-null object");
-  }
-  const presets = obj.presets;
-  for (const [presetName, preset] of Object.entries(presets)) {
-    if (typeof preset !== "object" || preset === null || Array.isArray(preset)) {
-      throw new Error(`tiers.json: preset '${presetName}' must be an object`);
-    }
-    const tiers = preset;
-    for (const [tierName, tier] of Object.entries(tiers)) {
-      if (typeof tier !== "object" || tier === null) {
-        throw new Error(
-          `tiers.json: tier '${presetName}.${tierName}' must be an object`
-        );
-      }
-      const t = tier;
-      if (typeof t.model !== "string" || !t.model) {
-        throw new Error(
-          `tiers.json: '${presetName}.${tierName}.model' must be a non-empty string`
-        );
-      }
-      if (typeof t.description !== "string") {
-        throw new Error(
-          `tiers.json: '${presetName}.${tierName}.description' must be a string`
-        );
-      }
-      if (!isStringArray(t.whenToUse)) {
-        throw new Error(
-          `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array of strings`
-        );
-      }
-    }
-  }
-  if (!isStringArray(obj.rules)) {
-    throw new Error("tiers.json: 'rules' must be an array of strings");
-  }
-  if (typeof obj.defaultTier !== "string") {
-    throw new Error("tiers.json: 'defaultTier' must be a string");
-  }
-  if (obj.modes !== void 0) {
-    if (typeof obj.modes !== "object" || obj.modes === null || Array.isArray(obj.modes)) {
-      throw new Error("tiers.json: 'modes' must be an object");
-    }
-    const modes = obj.modes;
-    for (const [modeName, mode] of Object.entries(modes)) {
-      if (typeof mode !== "object" || mode === null) {
-        throw new Error(`tiers.json: mode '${modeName}' must be an object`);
-      }
-      const m = mode;
-      if (typeof m.defaultTier !== "string") {
-        throw new Error(
-          `tiers.json: mode '${modeName}.defaultTier' must be a string`
-        );
-      }
-      if (typeof m.description !== "string") {
-        throw new Error(
-          `tiers.json: mode '${modeName}.description' must be a string`
-        );
-      }
-      if (m.overrideRules !== void 0 && !isStringArray(m.overrideRules)) {
-        throw new Error(
-          `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`
-        );
-      }
-      if (m.tierPrompts !== void 0) {
-        if (typeof m.tierPrompts !== "object" || m.tierPrompts === null || Array.isArray(m.tierPrompts)) {
-          throw new Error(
-            `tiers.json: mode '${modeName}.tierPrompts' must be an object`
-          );
-        }
-        for (const [tierName, prompt] of Object.entries(
-          m.tierPrompts
-        )) {
-          if (typeof prompt !== "string") {
-            throw new Error(
-              `tiers.json: mode '${modeName}.tierPrompts.${tierName}' must be a string`
-            );
-          }
-        }
-      }
-    }
-  }
-  if (obj.tierCaps !== void 0) {
-    if (typeof obj.tierCaps !== "object" || obj.tierCaps === null || Array.isArray(obj.tierCaps)) {
-      throw new Error("tiers.json: 'tierCaps' must be an object");
-    }
-    const tc = obj.tierCaps;
-    for (const [tierName, cap] of Object.entries(tc)) {
-      if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1) {
-        throw new Error(
-          `tiers.json: tierCaps.'${tierName}' must be a positive integer`
-        );
-      }
-    }
-  }
-  if (obj.tierPrompts !== void 0) {
-    if (typeof obj.tierPrompts !== "object" || obj.tierPrompts === null || Array.isArray(obj.tierPrompts)) {
-      throw new Error("tiers.json: 'tierPrompts' must be an object");
-    }
-    const tp = obj.tierPrompts;
-    for (const [tierName, prompt] of Object.entries(tp)) {
-      if (typeof prompt !== "string") {
-        throw new Error(
-          `tiers.json: tierPrompts.'${tierName}' must be a string`
-        );
-      }
-    }
-  }
-  if (obj.taskPatterns !== void 0) {
-    if (typeof obj.taskPatterns !== "object" || obj.taskPatterns === null || Array.isArray(obj.taskPatterns)) {
-      throw new Error("tiers.json: 'taskPatterns' must be an object");
-    }
-    const tp = obj.taskPatterns;
-    for (const [tierName, patterns] of Object.entries(tp)) {
-      if (!isStringArray(patterns)) {
-        throw new Error(
-          `tiers.json: taskPatterns.'${tierName}' must be an array of strings`
-        );
-      }
-    }
-  }
-  return raw;
+function validateConfig2(raw) {
+  return validateConfig(raw);
 }
 function applyPersistedState(cfg, state) {
   const normalizedState = normalizeRouterState(state);
@@ -619,8 +694,9 @@ function applyPersistedState(cfg, state) {
       nextCfg.activePreset = resolved;
     }
   }
-  if (normalizedState.activeMode && cfg.modes?.[normalizedState.activeMode]) {
-    nextCfg.activeMode = normalizedState.activeMode;
+  const resolvedMode = resolveModeName(cfg, normalizedState.activeMode);
+  if (resolvedMode) {
+    nextCfg.activeMode = resolvedMode;
   }
   return nextCfg;
 }
@@ -656,7 +732,7 @@ function writeStateFile(filePath, patch) {
 }
 function loadConfigFromPaths(paths = resolveRouterPaths()) {
   const raw = JSON.parse((0, import_fs.readFileSync)(paths.configPath, "utf-8"));
-  const cfg = validateConfig(raw);
+  const cfg = validateConfig2(raw);
   return applyPersistedState(cfg, readStateFile(paths.statePath));
 }
 function loadConfig() {
@@ -748,11 +824,12 @@ function saveActivePreset(presetName) {
 }
 function saveActiveMode(modeName) {
   const cfg = loadConfig();
-  if (!cfg.modes?.[modeName]) {
+  const resolvedMode = resolveModeName(cfg, modeName);
+  if (!resolvedMode) {
     return;
   }
-  cfg.activeMode = modeName;
-  writeState({ activeMode: modeName });
+  cfg.activeMode = resolvedMode;
+  writeState({ activeMode: resolvedMode });
   invalidateConfigCache();
 }
 function getActiveTiers(cfg) {
@@ -914,10 +991,10 @@ Available presets: ${Object.keys(cfg.presets).join(", ")}`);
 function normalizeCommandArgs(args) {
   return typeof args === "string" ? args : "";
 }
-function buildBudgetOutput(cfg, args) {
+function buildModeOutput(cfg, args) {
   const modes = cfg.modes;
   if (!modes || Object.keys(modes).length === 0) {
-    return 'No modes configured in tiers.json. Add a "modes" section to enable budget mode.';
+    return 'No modes configured in tiers.json. Add a "modes" section to enable routing modes.';
   }
   const requested = normalizeCommandArgs(args).trim().toLowerCase();
   const currentMode = cfg.activeMode || "normal";
@@ -930,14 +1007,15 @@ function buildBudgetOutput(cfg, args) {
       );
     }
     lines.push(`
-Switch with: \`/budget <mode>\``);
+Switch with: \`/${MODE_COMMAND_NAME} <mode>\``);
     return lines.join("\n");
   }
-  if (modes[requested]) {
-    saveActiveMode(requested);
-    const mode = modes[requested];
+  const resolvedMode = resolveModeName(cfg, requested);
+  if (resolvedMode) {
+    saveActiveMode(resolvedMode);
+    const mode = modes[resolvedMode];
     return [
-      `Routing mode switched to **${requested}**.`,
+      `Routing mode switched to **${resolvedMode}**.`,
       "",
       mode.description,
       `Default tier: @${mode.defaultTier}`,
@@ -1194,7 +1272,7 @@ ${banner}` : banner;
       return opencodeConfig;
     },
     // -----------------------------------------------------------------------
-    // Inject delegation protocol — uses cached config (invalidated on /preset or /budget)
+    // Inject delegation protocol — uses cached config (invalidated on /preset or /mode)
     // Only inject for the primary orchestrator, NOT for subagent calls.
     // Subagents get confused by delegation instructions when they should
     // just execute a task (especially smaller models like Haiku).
@@ -1229,9 +1307,20 @@ ${banner}` : banner;
       }
     },
     // -----------------------------------------------------------------------
-    // Handle /tiers, /preset, and /budget commands
+    // Handle /tiers, /preset, and /mode commands
     // -----------------------------------------------------------------------
     "command.execute.before": async (input, output) => {
+      if (input.command === MODE_COMMAND_NAME) {
+        try {
+          cfg = loadConfig();
+        } catch {
+        }
+        output.parts.push({
+          type: "text",
+          text: buildModeOutput(cfg, input.args ?? input.arguments ?? "")
+        });
+        return;
+      }
       if (input.command === "tiers") {
         try {
           cfg = loadConfig();
@@ -1268,16 +1357,6 @@ ${banner}` : banner;
           text: `# Bypass: ${status}
 
 ${desc}`
-        });
-      }
-      if (input.command === "budget") {
-        try {
-          cfg = loadConfig();
-        } catch {
-        }
-        output.parts.push({
-          type: "text",
-          text: buildBudgetOutput(cfg, input.arguments ?? "")
         });
       }
     }
@@ -1349,9 +1428,9 @@ function registerActiveTierAgents(opencodeConfig, cfg, tiers = getActiveTiers(cf
 0 && (module.exports = {
   applyPersistedState,
   buildAgentDefinition,
-  buildBudgetOutput,
   buildCapBanner,
   buildDelegationProtocol,
+  buildModeOutput,
   buildPresetOutput,
   composePrompt,
   detectNarration,

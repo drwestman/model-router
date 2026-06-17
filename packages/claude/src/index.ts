@@ -1,4 +1,4 @@
-import { createAdapterPaths, packageRootFrom } from "../../core/src/index.js";
+import { createAdapterPaths, packageRootFrom } from "@drwestman/model-router-core";
 
 export const adapterName = "claude";
 export const adapterPaths = createAdapterPaths({
@@ -17,3 +17,14 @@ export function createClaudeAdapter() {
     pluginManifest: ".claude-plugin/plugin.json",
   };
 }
+
+export {
+  activateMain,
+  commands,
+  config,
+  instructions,
+  output,
+  promptSubmitMain,
+  runCommandMain,
+  state,
+} from "./bridge.js";

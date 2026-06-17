@@ -431,7 +431,7 @@ Handler receives: input.arguments = "user input" or null
             │ current state   │ │ value?         │
             │                 │ │ if(config[...])│
             │ /preset         │ │                │
-            │ /budget         │ │ Yes    │ No    │
+            │ /mode           │ │ Yes    │ No    │
             │ (no args)       │ └─┬──────┬───────┘
             └─────────────────┘   │      │
                                   ▼      ▼

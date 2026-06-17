@@ -21,7 +21,7 @@ Line 572-575:   opencodeConfig.command["preset"] = {
                 };
 Line 576-579:   opencodeConfig.command["budget"] = {
                   template: "$ARGUMENTS",
-                  description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
+                  description: "Show or switch routing mode (e.g., /mode, /mode budget, /mode ponytail)",
                 };
 Line 580-606:   opencodeConfig.command["annotate-plan"] = {
                   template: [
@@ -105,7 +105,7 @@ Line 642-650:   if (input.command === "budget") {
 
 ## Argument Processing Examples
 
-### /budget Command Argument Handler
+### /mode Command Argument Handler
 **Location:** Lines 443-481 (buildBudgetOutput function)
 
 ```
@@ -116,7 +116,7 @@ Line 452-461: if (!requested) {  // Empty args case
                   const active = name === currentMode ? " <- active" : "";
                   lines.push(`- **${name}**${active}: ${mode.description}...`);
                 }
-                lines.push(`\nSwitch with: \`/budget <mode>\``);
+                lines.push(`\nSwitch with: \`/mode <mode>\``);
                 return lines.join("\n");
               }
               
@@ -365,7 +365,7 @@ Line 410-437: function buildTiersOutput(cfg: RouterConfig): string {
               }
 ```
 
-### /budget Command Output
+### /mode Command Output
 **Location:** Lines 443-481 (see Argument Processing section above)
 
 ### /preset Command Output  
@@ -426,9 +426,9 @@ Line 20-31:   interface TierConfig {
 
 | Feature | Lines | Purpose |
 |---------|-------|---------|
-| Command registration | 566-606 | Register /tiers, /preset, /budget, /annotate-plan |
+| Command registration | 566-606 | Register /tiers, /preset, /mode, /annotate-plan |
 | Command handler | 624-651 | Handle input.command and output.parts |
-| /budget handler | 443-481 | Argument parsing example |
+| /mode handler | 443-481 | Argument parsing example |
 | /preset handler | 487-525 | Full state change example |
 | Cache invalidation | 66-73 | Mark config as dirty |
 | Load config (cached) | 180-208 | Load with fallback to state file |

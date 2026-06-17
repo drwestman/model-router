@@ -19,6 +19,7 @@ const repoRoot = path.resolve(here, "..");
 const includePaths = [
   ".claude-plugin",
   "hooks",
+  "src",
   "tiers.json",
   "skills",
   "README.md",

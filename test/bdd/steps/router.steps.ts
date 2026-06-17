@@ -215,7 +215,7 @@ Then("the router commands should be registered", function (this: RouterWorld) {
   for (const name of [
     "tiers",
     "preset",
-    "budget",
+    "mode",
     "bypass",
     "ponytail-review",
     "annotate-plan",

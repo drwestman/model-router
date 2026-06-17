@@ -7,18 +7,41 @@ export interface TierConfig {
   model: string;
   description: string;
   whenToUse: string[];
+  prompt?: string;
   variant?: string;
+  color?: string;
   costRatio?: number;
   steps?: number;
+  thinking?: {
+    budgetTokens?: number;
+    [key: string]: unknown;
+  };
+  reasoning?: {
+    effort?: "low" | "medium" | "high";
+    summary?: "auto" | "always" | "never";
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
 export type Preset = Record<string, TierConfig>;
 
+export type TierPromptConfig = Record<string, string>;
+
+export type FallbackPresetMap = Record<string, string[]>;
+
+export interface FallbackConfig {
+  global?: FallbackPresetMap;
+  presets?: Record<string, FallbackPresetMap>;
+}
+
+export const MODE_COMMAND_NAME = "mode";
+
 export interface ModeConfig {
   defaultTier: string;
   description: string;
   overrideRules?: string[];
+  tierPrompts?: TierPromptConfig;
 }
 
 export interface RouterConfig {
@@ -31,7 +54,7 @@ export interface RouterConfig {
   tierCaps?: Record<string, number>;
   tierPrompts?: Record<string, string>;
   taskPatterns?: Record<string, string[]>;
-  fallback?: Record<string, unknown>;
+  fallback?: FallbackConfig;
 }
 
 export interface RouterState {
@@ -130,6 +153,16 @@ function validateTierConfig(
       `tiers.json: '${presetName}.${tierName}.variant' must be a string`,
     );
   }
+  if (tier.color !== undefined && typeof tier.color !== "string") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.color' must be a string`,
+    );
+  }
+  if (tier.prompt !== undefined && typeof tier.prompt !== "string") {
+    throw new Error(
+      `tiers.json: '${presetName}.${tierName}.prompt' must be a string`,
+    );
+  }
   if (tier.costRatio !== undefined && typeof tier.costRatio !== "number") {
     throw new Error(
       `tiers.json: '${presetName}.${tierName}.costRatio' must be a number`,
@@ -142,6 +175,46 @@ function validateTierConfig(
     throw new Error(
       `tiers.json: '${presetName}.${tierName}.steps' must be a positive integer`,
     );
+  }
+  if (tier.thinking !== undefined) {
+    const thinking = ensureObject(
+      tier.thinking,
+      `tiers.json: '${presetName}.${tierName}.thinking' must be an object`,
+    );
+    if (
+      thinking.budgetTokens !== undefined &&
+      typeof thinking.budgetTokens !== "number"
+    ) {
+      throw new Error(
+        `tiers.json: '${presetName}.${tierName}.thinking.budgetTokens' must be a number`,
+      );
+    }
+  }
+  if (tier.reasoning !== undefined) {
+    const reasoning = ensureObject(
+      tier.reasoning,
+      `tiers.json: '${presetName}.${tierName}.reasoning' must be an object`,
+    );
+    if (
+      reasoning.effort !== undefined &&
+      reasoning.effort !== "low" &&
+      reasoning.effort !== "medium" &&
+      reasoning.effort !== "high"
+    ) {
+      throw new Error(
+        `tiers.json: '${presetName}.${tierName}.reasoning.effort' must be a string`,
+      );
+    }
+    if (
+      reasoning.summary !== undefined &&
+      reasoning.summary !== "auto" &&
+      reasoning.summary !== "always" &&
+      reasoning.summary !== "never"
+    ) {
+      throw new Error(
+        `tiers.json: '${presetName}.${tierName}.reasoning.summary' must be a string`,
+      );
+    }
   }
 
   return tier as TierConfig;
@@ -196,6 +269,19 @@ export function validateConfig(raw: unknown): RouterConfig {
           `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`,
         );
       }
+      if (mode.tierPrompts !== undefined) {
+        const tierPrompts = ensureObject(
+          mode.tierPrompts,
+          `tiers.json: mode '${modeName}.tierPrompts' must be an object`,
+        );
+        for (const [tierName, prompt] of Object.entries(tierPrompts)) {
+          if (typeof prompt !== "string") {
+            throw new Error(
+              `tiers.json: mode '${modeName}.tierPrompts.${tierName}' must be a string`,
+            );
+          }
+        }
+      }
     }
   }
 
@@ -240,7 +326,7 @@ export function validateConfig(raw: unknown): RouterConfig {
   const normalizedTierCaps = obj.tierCaps as Record<string, number> | undefined;
   const normalizedTierPrompts = obj.tierPrompts as Record<string, string> | undefined;
   const normalizedTaskPatterns = obj.taskPatterns as Record<string, string[]> | undefined;
-  const normalizedFallback = obj.fallback as Record<string, unknown> | undefined;
+  const normalizedFallback = obj.fallback as FallbackConfig | undefined;
 
   return {
     activePreset: obj.activePreset,
@@ -291,20 +377,28 @@ export function resolveModeConfig(
   cfg: RouterConfig,
   modeName: string | undefined,
 ): ModeConfig | undefined {
-  if (!modeName || !cfg.modes) return undefined;
-  return cfg.modes[modeName];
+  const resolvedMode = resolveModeName(cfg, modeName);
+  return resolvedMode ? cfg.modes?.[resolvedMode] : undefined;
+}
+
+export function resolveModeName(
+  cfg: RouterConfig,
+  requestedMode: string | undefined,
+): string | undefined {
+  if (!requestedMode || !cfg.modes) return undefined;
+  if (cfg.modes[requestedMode]) return requestedMode;
+
+  const normalized = requestedMode.trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  return Object.keys(cfg.modes).find((name) => name.toLowerCase() === normalized);
 }
 
 export function resolveActiveMode(
   cfg: RouterConfig,
   state?: RouterState,
 ): string | undefined {
-  const requested = state?.activeMode?.trim() || cfg.activeMode?.trim();
-  if (!requested || !cfg.modes?.[requested]) {
-    return undefined;
-  }
-
-  return requested;
+  return resolveModeName(cfg, state?.activeMode?.trim() || cfg.activeMode?.trim());
 }
 
 export function calculateTierCaps(cfg: RouterConfig): Record<string, number> {

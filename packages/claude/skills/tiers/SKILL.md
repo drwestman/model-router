@@ -3,6 +3,4 @@ description: Show the current model-router Claude preset, mode, bypass state, an
 disable-model-invocation: true
 ---
 
-!`node "${CLAUDE_PLUGIN_ROOT}/hooks/run-command.js" tiers`
-
-Return exactly the command output above with no additional text.
+/model-router:tiers

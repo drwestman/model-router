@@ -126,7 +126,7 @@ The actual plugin implementation. Contains:
 **Format user-facing messages**
 1. Read: QUICK_REFERENCE.ts → "USER FEEDBACK FORMAT" section
 2. Reference: COMMAND_PATTERNS.md → "6. User Feedback Pattern"
-3. Examples: LINE_REFERENCES.md → "/tiers, /budget, /preset outputs" (lines 410-525)
+3. Examples: LINE_REFERENCES.md → "/tiers, /mode, /preset outputs" (lines 410-525)
 
 **Create a minimal example**
 1. Read: QUICK_REFERENCE.ts → "COMPLETE MINIMAL EXAMPLE" section
@@ -260,7 +260,7 @@ The opencode-model-router plugin registers 4 commands:
 |---------|----------|-----------|---------|-----------------|
 | `/tiers` | `""` | None | Line 625-630 | `buildTiersOutput()` (lines 410-437) |
 | `/preset` | `$ARGUMENTS` | Preset name | Line 632-640 | `buildPresetOutput()` (lines 487-525) |
-| `/budget` | `$ARGUMENTS` | Mode name | Line 642-650 | `buildBudgetOutput()` (lines 443-481) |
+| `/mode` | `$ARGUMENTS` | Mode name | Line 642-650 | `buildModeOutput()` (lines 443-481) |
 | `/annotate-plan` | Multi-line | File path | Not shown | User delegates to agent |
 
 ---
@@ -350,4 +350,3 @@ All documentation is self-contained in this folder:
 - Original source: `src/index.ts`
 
 No external dependencies needed for understanding the patterns.
-

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "typescript";
@@ -16,6 +16,8 @@ export function buildProject(rootDir = process.cwd(), env = process.env) {
     join(sourceDir, "providers", "index.ts"),
     join(sourceDir, "providers", "openai.ts"),
     join(sourceDir, "providers", "unknown.ts"),
+    join(rootDir, "packages", "claude", "src", "index.ts"),
+    join(rootDir, "packages", "claude", "src", "bridge.ts"),
   ];
   const buildInfoDir = join(sourceDir, "generated");
   const buildInfoPath = join(buildInfoDir, "build-info.json");
@@ -28,7 +30,7 @@ export function buildProject(rootDir = process.cwd(), env = process.env) {
   const buildNumber = resolvedBuildNumber.value;
   const fullVersion = `${baseVersion}+${buildNumber}`;
 
-  for (const sourcePath of sourcePaths) {
+  for (const sourcePath of sourcePaths.filter((candidate) => existsSync(candidate))) {
     const source = readFileSync(sourcePath, "utf8");
     const result = ts.transpileModule(source, {
       fileName: sourcePath,

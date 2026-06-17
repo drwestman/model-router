@@ -18,6 +18,7 @@ const registryPath = path.join(claudePluginsRoot, "installed_plugins.json");
 const includePaths = [
   ".claude-plugin",
   "hooks",
+  "src",
   "tiers.json",
   "skills",
   "README.md",

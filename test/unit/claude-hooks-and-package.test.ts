@@ -21,6 +21,7 @@ import { packageClaudePlugin } from "../../scripts/package-claude-plugin.mjs";
 const require = createRequire(import.meta.url);
 const commandsModulePath = require.resolve("../../packages/claude/hooks/commands.js");
 const configModulePath = require.resolve("../../packages/claude/hooks/config.js");
+const promptSubmitScriptPath = require.resolve("../../packages/claude/hooks/prompt-submit.js");
 const runCommandScriptPath = require.resolve("../../packages/claude/hooks/run-command.js");
 const stateModulePath = require.resolve("../../packages/claude/hooks/state.js");
 
@@ -28,10 +29,7 @@ function writeJSON(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function withEnv<T>(
-  env: Record<string, string | undefined>,
-  run: () => T,
-): T {
+function withEnv<T>(env: Record<string, string | undefined>, run: () => T): T {
   const previous = new Map<string, string | undefined>();
 
   for (const [key, value] of Object.entries(env)) {
@@ -87,48 +85,92 @@ async function withEnvAsync<T>(
 }
 
 function loadClaudeHooks(configPath: string, statePath: string) {
-  return withEnv(
-    {
-      CLAUDE_MODEL_ROUTER_CONFIG_PATH: configPath,
-      CLAUDE_MODEL_ROUTER_STATE_PATH: statePath,
-    },
-    () => {
-      delete require.cache[commandsModulePath];
-      delete require.cache[configModulePath];
-      delete require.cache[stateModulePath];
+  const env = {
+    CLAUDE_MODEL_ROUTER_CONFIG_PATH: configPath,
+    CLAUDE_MODEL_ROUTER_STATE_PATH: statePath,
+  };
+  const wrapModule = <T extends Record<string, unknown>>(mod: T): T =>
+    new Proxy(mod, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
 
-      return {
-        commands: require(commandsModulePath),
-        config: require(configModulePath),
-        state: require(stateModulePath),
-      } as {
-        commands: typeof import("../../packages/claude/hooks/commands.js");
-        config: typeof import("../../packages/claude/hooks/config.js");
-        state: typeof import("../../packages/claude/hooks/state.js");
-      };
-    },
-  );
+        if (typeof value !== "function") {
+          return value;
+        }
+
+        return (...args: unknown[]) => withEnv(env, () => Reflect.apply(value, target, args));
+      },
+    }) as T;
+
+  return withEnv(env, () => {
+    delete require.cache[commandsModulePath];
+    delete require.cache[configModulePath];
+    delete require.cache[stateModulePath];
+
+    return {
+      commands: wrapModule(require(commandsModulePath)),
+      config: wrapModule(require(configModulePath)),
+      state: wrapModule(require(stateModulePath)),
+    } as {
+      commands: typeof import("../../packages/claude/hooks/commands.js");
+      config: typeof import("../../packages/claude/hooks/config.js");
+      state: typeof import("../../packages/claude/hooks/state.js");
+    };
+  });
 }
 
 function createClaudeConfig() {
   return {
-    defaultPreset: "anthropic",
-    defaultMode: "normal",
+    activePreset: "anthropic",
+    activeMode: "normal",
+    defaultTier: "medium",
+    tierCaps: {
+      fast: 8,
+      medium: 5,
+      heavy: 3,
+    },
+    taskPatterns: {
+      fast: ["search", "inspect", "read", "grep"],
+      medium: ["implement", "fix", "test", "refactor"],
+      heavy: ["architecture", "security", "root cause"],
+    },
+    rules: ["read-only exploration -> @fast", "implementation work -> @medium"],
     modes: {
       normal: {
         description: "Default mode",
+        defaultTier: "medium",
       },
     },
     presets: {
       anthropic: {
-        tiers: {
-          fast: { model: "anthropic/claude-haiku-4-5" },
-          medium: { model: "anthropic/claude-sonnet-4-6" },
-          heavy: { model: "anthropic/claude-opus-4-1" },
+        fast: {
+          model: "anthropic/claude-haiku-4-5",
+          description: "Fast",
+          whenToUse: ["search"],
+        },
+        medium: {
+          model: "anthropic/claude-sonnet-4-6",
+          description: "Medium",
+          whenToUse: ["implement"],
+        },
+        heavy: {
+          model: "anthropic/claude-opus-4-1",
+          description: "Heavy",
+          whenToUse: ["architecture"],
         },
       },
     },
   };
+}
+
+function readHookAdditionalContext(stdout: string): string | null {
+  const parsed = JSON.parse(stdout) as {
+    hookSpecificOutput?: { additionalContext?: unknown };
+  };
+
+  return typeof parsed.hookSpecificOutput?.additionalContext === "string"
+    ? parsed.hookSpecificOutput.additionalContext
+    : null;
 }
 
 async function readTarEntries(archivePath: string): Promise<string[]> {
@@ -208,6 +250,7 @@ function createClaudePluginFixture(rootDir: string): void {
   const claudeRoot = join(rootDir, "packages", "claude");
 
   mkdirSync(join(claudeRoot, "hooks", "nested"), { recursive: true });
+  mkdirSync(join(claudeRoot, "src"), { recursive: true });
   mkdirSync(join(claudeRoot, "skills", "zeta"), { recursive: true });
   mkdirSync(join(claudeRoot, "skills", "alpha"), { recursive: true });
   writeJSON(join(claudeRoot, "package.json"), {
@@ -218,6 +261,7 @@ function createClaudePluginFixture(rootDir: string): void {
   writeFileSync(join(claudeRoot, "README.md"), "# Claude plugin\n", "utf8");
   writeFileSync(join(claudeRoot, "install-local.mjs"), "export {};\n", "utf8");
   writeJSON(join(claudeRoot, "tiers.json"), createClaudeConfig());
+  writeFileSync(join(claudeRoot, "src", "bridge.cjs"), "module.exports = {};\n", "utf8");
   writeFileSync(join(claudeRoot, "hooks", "b.js"), "b\n", "utf8");
   writeFileSync(join(claudeRoot, "hooks", "a.js"), "a\n", "utf8");
   writeFileSync(join(claudeRoot, "hooks", "nested", "c.txt"), "c\n", "utf8");
@@ -225,7 +269,7 @@ function createClaudePluginFixture(rootDir: string): void {
   writeFileSync(join(claudeRoot, "skills", "alpha", "SKILL.md"), "alpha\n", "utf8");
 }
 
-test("Claude hook config omits listModeNames and rejects non-object tiers files", () => {
+test("Claude hook config uses canonical schema and rejects non-object tiers files", () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-config-"));
   const configPath = join(tempRoot, "tiers.json");
   const statePath = join(tempRoot, "state.json");
@@ -241,7 +285,7 @@ test("Claude hook config omits listModeNames and rejects non-object tiers files"
     assert.deepEqual(hooks.config.listGlobalModeNames(config), ["normal"]);
 
     writeFileSync(configPath, "null\n", "utf8");
-    assert.throws(() => hooks.config.loadConfig(), /valid JSON object/i);
+    assert.throws(() => hooks.config.loadConfig(), /expected a JSON object/i);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -307,6 +351,7 @@ test("Claude shared command runner supports slash, namespaced, and CLI command e
       ["preset", "anthropic", "/preset anthropic"],
       ["mode", "normal", "/mode normal"],
       ["bypass", "on", "/bypass on"],
+      ["delegate", "medium implement the change", "/delegate medium implement the change"],
       ["annotate-plan", "inspect docs; implement fix", "/annotate-plan inspect docs; implement fix"],
       ["ponytail-review", "add dependency and helper file", "/ponytail-review add dependency and helper file"],
     ] as const;
@@ -318,6 +363,10 @@ test("Claude shared command runner supports slash, namespaced, and CLI command e
       );
       assert.equal(
         hooks.commands.runCommand(config, state, `model-router:${commandName}`, argText),
+        hooks.commands.handleCommand(config, state, slashCommand),
+      );
+      assert.equal(
+        hooks.commands.handleCommand(config, state, `/model-router:${commandName}${argText ? ` ${argText}` : ""}`),
         hooks.commands.handleCommand(config, state, slashCommand),
       );
     }
@@ -343,6 +392,50 @@ test("Claude shared command runner supports slash, namespaced, and CLI command e
       }),
       /anthropic\/claude-sonnet-4-6/,
     );
+    assert.match(
+      execFileSync(process.execPath, [runCommandScriptPath, "delegate", "fast", "inspect docs"], {
+        encoding: "utf8",
+        env,
+      }),
+      /delegate: @fast/,
+    );
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Claude delegate command returns a deterministic local-fallback template", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-delegate-"));
+  const configPath = join(tempRoot, "tiers.json");
+  const statePath = join(tempRoot, "state.json");
+
+  try {
+    writeJSON(configPath, createClaudeConfig());
+
+    const hooks = loadClaudeHooks(configPath, statePath);
+    const config = hooks.config.loadConfig();
+    const state = hooks.state.loadState(config);
+
+    assert.equal(
+      hooks.commands.handleCommand(
+        config,
+        state,
+        "/model-router:delegate medium implement the adapter bridge",
+      ),
+      [
+        "[model-router]",
+        "delegate: @medium",
+        "preset: anthropic",
+        "mode: normal",
+        "model: anthropic/claude-sonnet-4-6",
+        "cap: 5",
+        "contract: implementation, refactoring, tests, and targeted verification",
+        "if native Claude subagents are available, delegate the task below.",
+        "if they are unavailable, do the same work locally.",
+        "task:",
+        "implement the adapter bridge",
+      ].join("\n"),
+    );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
@@ -355,45 +448,126 @@ test("Claude hook config requires fast medium and heavy tier models", () => {
 
   try {
     const invalidConfig = createClaudeConfig();
-    delete invalidConfig.presets.anthropic.tiers.heavy.model;
+    delete invalidConfig.presets.anthropic.heavy.model;
     writeJSON(configPath, invalidConfig);
 
     const hooks = loadClaudeHooks(configPath, statePath);
 
-    assert.throws(
-      () => hooks.config.loadConfig(),
-      /must define a model for tier 'heavy'/i,
-    );
+    assert.throws(() => hooks.config.loadConfig(), /anthropic\.heavy\.model/i);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("Claude hook state removes the temp file when persisting fails", () => {
-  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-state-"));
+test("Claude prompt-submit injects full templates, hints, or nothing deterministically", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-prompt-submit-"));
   const configPath = join(tempRoot, "tiers.json");
   const statePath = join(tempRoot, "state.json");
-  const fs = require("node:fs") as typeof import("node:fs");
-  const originalRenameSync = fs.renameSync;
+  const env = {
+    ...process.env,
+    CLAUDE_MODEL_ROUTER_CONFIG_PATH: configPath,
+    CLAUDE_MODEL_ROUTER_STATE_PATH: statePath,
+    PLUGIN_DATA: "1",
+  };
 
   try {
     writeJSON(configPath, createClaudeConfig());
-    const hooks = loadClaudeHooks(configPath, statePath);
-    const config = hooks.config.loadConfig();
 
-    fs.renameSync = (() => {
-      throw new Error("rename failed");
-    }) as typeof fs.renameSync;
+    const high = readHookAdditionalContext(
+      execFileSync(process.execPath, [promptSubmitScriptPath], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify({ prompt: "implement the adapter bridge and tests" }),
+      }),
+    );
+    const moderate = readHookAdditionalContext(
+      execFileSync(process.execPath, [promptSubmitScriptPath], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify({ prompt: "please fix checkout flow" }),
+      }),
+    );
+    const ambiguous = execFileSync(process.execPath, [promptSubmitScriptPath], {
+      encoding: "utf8",
+      env,
+      input: JSON.stringify({ prompt: "hello there" }),
+    });
 
-    assert.throws(() => hooks.state.saveState(config, {}), /rename failed/);
-    assert.deepEqual(readdirSync(tempRoot).sort(), ["tiers.json"]);
+    assert.equal(
+      high,
+      [
+        "[model-router]",
+        "delegate: @medium",
+        "preset: anthropic",
+        "mode: normal",
+        "model: anthropic/claude-sonnet-4-6",
+        "cap: 5",
+        "contract: implementation, refactoring, tests, and targeted verification",
+        "if native Claude subagents are available, delegate the task below.",
+        "if they are unavailable, do the same work locally.",
+        "task:",
+        "implement the adapter bridge and tests",
+      ].join("\n"),
+    );
+    assert.equal(
+      moderate,
+      "[model-router] likely @medium. Delegate if Claude subagents are available; otherwise keep the same scope locally.",
+    );
+    assert.equal(ambiguous, "");
   } finally {
-    fs.renameSync = originalRenameSync;
     rmSync(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("Claude plugin skills are discoverable and point at the shared runner", () => {
+test("Claude namespaced prompt-submit commands return output and update state", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-namespaced-command-"));
+  const configPath = join(tempRoot, "tiers.json");
+  const statePath = join(tempRoot, "state.json");
+  const env = {
+    ...process.env,
+    CLAUDE_MODEL_ROUTER_CONFIG_PATH: configPath,
+    CLAUDE_MODEL_ROUTER_STATE_PATH: statePath,
+    PLUGIN_DATA: "1",
+  };
+
+  try {
+    writeJSON(configPath, {
+      ...createClaudeConfig(),
+      modes: {
+        normal: {
+          description: "Default mode",
+          defaultTier: "medium",
+        },
+        review: {
+          description: "Review mode",
+          defaultTier: "fast",
+        },
+      },
+    });
+
+    const output = readHookAdditionalContext(
+      execFileSync(process.execPath, [promptSubmitScriptPath], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify({ prompt: "/model-router:mode review" }),
+      }),
+    );
+
+    assert.equal(output, "[model-router] active: anthropic/review | bypass: off");
+
+    const persisted = JSON.parse(readFileSync(statePath, "utf8")) as {
+      activeMode?: string;
+      bypass?: boolean;
+    };
+
+    assert.equal(persisted.activeMode, "review");
+    assert.equal(persisted.bypass, false);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Claude plugin skills are discoverable and forward to prompt-submit commands", () => {
   const skillsRoot = join(process.cwd(), "packages", "claude", "skills");
   const overview = readFileSync(join(skillsRoot, "model-router", "SKILL.md"), "utf8");
   const commandSkills = [
@@ -401,13 +575,16 @@ test("Claude plugin skills are discoverable and point at the shared runner", () 
     ["preset", true],
     ["mode", true],
     ["bypass", true],
+    ["delegate", true],
     ["annotate-plan", true],
     ["ponytail-review", true],
   ] as const;
 
   assert.match(overview, /\/model-router:tiers/);
   assert.match(overview, /\/model-router:preset <preset-name>/);
+  assert.match(overview, /\/model-router:delegate <fast\|medium\|heavy> <task>/);
   assert.match(overview, /namespaced plugin skills above are the discoverable installed command surface/i);
+  assert.match(overview, /through the plugin prompt-submit hook/i);
 
   for (const [skillName, expectsArgumentHint] of commandSkills) {
     const content = readFileSync(join(skillsRoot, skillName, "SKILL.md"), "utf8");
@@ -416,8 +593,11 @@ test("Claude plugin skills are discoverable and point at the shared runner", () 
     assert.match(content, /disable-model-invocation: true/);
     assert.match(
       content,
-      new RegExp(`node \\\"\\$\\{CLAUDE_PLUGIN_ROOT\\}\/hooks\/run-command\\.js\\\" ${skillName}`),
+      new RegExp(
+        `/model-router:${skillName}${expectsArgumentHint ? String.raw` \$ARGUMENTS` : ""}`,
+      ),
     );
+    assert.doesNotMatch(content, /run-command\.js/);
 
     if (expectsArgumentHint) {
       assert.match(content, /argument-hint:/);

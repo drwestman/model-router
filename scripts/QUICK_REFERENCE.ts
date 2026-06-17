@@ -70,12 +70,12 @@ const handleCommands = {
 // ============================================================================
 
 // Lines 443-481 in src/index.ts
-function buildBudgetOutput(cfg: RouterConfig, args: string): string {
+function buildModeOutput(cfg: RouterConfig, args: string): string {
   const requested = args.trim().toLowerCase();  // Normalize
 
   // Empty args: show help/current state
   if (!requested) {
-    return ["# Current State", "...", `Usage: /budget <mode>`].join("\n");
+    return ["# Current State", "...", `Usage: /mode <mode>`].join("\n");
   }
 
   // Validate input
@@ -142,7 +142,7 @@ const systemPromptInjection = {
   "experimental.chat.system.transform": async (_input: any, output: any) => {
     // output.system is a string[] array
     try {
-      cfg = loadConfig();  // Uses cache (invalidated by /preset, /budget)
+      cfg = loadConfig();  // Uses cache (invalidated by /preset, /mode)
     } catch {
       // Gracefully use last known config on error
     }
