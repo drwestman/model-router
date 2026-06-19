@@ -207,6 +207,10 @@ function buildRoutingHint(classification) {
 }
 function buildPromptContext(config, state, prompt) {
     const classification = scorePrompt(config, state, prompt);
+    const preset = getActivePreset(config, state);
+    if (!preset[classification.tier]) {
+        return null;
+    }
     if (classification.confidence === "very-high") {
         return buildDelegationTemplate(config, state, classification.tier, prompt.trim());
     }
@@ -383,7 +387,9 @@ function annotateStep(config, state, step) {
         return null;
     }
     const classification = scorePrompt(config, state, body);
-    const tier = classification.confidence === "ambiguous" ? "medium" : classification.tier;
+    const tier = classification.confidence === "ambiguous"
+        ? getPolicyDefaultTier(resolvePolicy(config, state).defaultTier)
+        : classification.tier;
     return `${prefix}${body} [tier:${tier}]`;
 }
 function handlePreset(config, state, args) {
@@ -431,6 +437,11 @@ function handleDelegate(config, state, argText) {
     const task = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1).trim();
     if (!isTierName(tierName) || !task) {
         return "[model-router] usage: /delegate <fast|medium|heavy> <task>";
+    }
+    const normalizedState = normalizeState(config, state);
+    const policy = resolvePolicy(config, normalizedState);
+    if (!getActivePreset(config, normalizedState)[tierName]) {
+        return `[model-router] error: tier '${tierName}' is not available in preset '${policy.activePreset}'.`;
     }
     return buildDelegationTemplate(config, state, tierName, task);
 }

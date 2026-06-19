@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import * as tar from "tar";
+import type { RouterConfig } from "@drwestman/model-router-core";
 
 import { packageClaudePlugin } from "../../scripts/package-claude-plugin.mjs";
 
@@ -119,7 +120,7 @@ function loadClaudeHooks(configPath: string, statePath: string) {
   });
 }
 
-function createClaudeConfig() {
+function createClaudeConfig(): RouterConfig {
   return {
     activePreset: "anthropic",
     activeMode: "normal",
@@ -255,7 +256,12 @@ function createClaudePluginFixture(rootDir: string): void {
   mkdirSync(join(claudeRoot, "skills", "alpha"), { recursive: true });
   writeJSON(join(claudeRoot, "package.json"), {
     name: "@model-router/claude",
+    type: "module",
     version: "1.2.3",
+  });
+  writeJSON(join(claudeRoot, "hooks", "package.json"), {
+    private: true,
+    type: "commonjs",
   });
   writeFileSync(join(claudeRoot, ".claude-plugin"), "plugin\n", "utf8");
   writeFileSync(join(claudeRoot, "README.md"), "# Claude plugin\n", "utf8");
@@ -329,6 +335,120 @@ test("Claude annotate-plan uses handleCommand with whole-word and line rules", (
         "/annotate-plan inspect docs\nimplement fix, with tests",
       ),
       ["inspect docs [tier:fast]", "implement fix, with tests [tier:medium]"].join("\n"),
+    );
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Claude annotate-plan ambiguous fallback uses active mode default tier", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-annotate-fallback-"));
+  const configPath = join(tempRoot, "tiers.json");
+  const statePath = join(tempRoot, "state.json");
+
+  try {
+    const config = createClaudeConfig();
+    config.modes.review = {
+      description: "Review mode",
+      defaultTier: "heavy",
+    };
+    writeJSON(configPath, config);
+
+    const hooks = loadClaudeHooks(configPath, statePath);
+    const loadedConfig = hooks.config.loadConfig();
+
+    assert.equal(
+      hooks.commands.handleCommand(loadedConfig, { activeMode: "review" }, "/annotate-plan clarify scope with team"),
+      "clarify scope with team [tier:heavy]",
+    );
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Claude prompt-submit skips unavailable auto-routed tiers", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-prompt-submit-"));
+  const configPath = join(tempRoot, "tiers.json");
+  const statePath = join(tempRoot, "state.json");
+
+  try {
+    const config = createClaudeConfig();
+    config.presets.anthropic = {
+      fast: config.presets.anthropic.fast,
+      medium: config.presets.anthropic.medium,
+    };
+    writeJSON(configPath, config);
+
+    const stdout = execFileSync(process.execPath, [promptSubmitScriptPath], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CLAUDE_MODEL_ROUTER_CONFIG_PATH: configPath,
+        CLAUDE_MODEL_ROUTER_STATE_PATH: statePath,
+      },
+      input: JSON.stringify({ prompt: "architecture root cause performance security rewrite" }),
+    });
+
+    assert.equal(stdout, "");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Claude delegate reports unavailable preset tier cleanly", () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-hooks-delegate-unavailable-"));
+  const configPath = join(tempRoot, "tiers.json");
+  const statePath = join(tempRoot, "state.json");
+
+  try {
+    const config = createClaudeConfig();
+    config.presets.anthropic = {
+      fast: config.presets.anthropic.fast,
+      medium: config.presets.anthropic.medium,
+    };
+    writeJSON(configPath, config);
+
+    const hooks = loadClaudeHooks(configPath, statePath);
+    const loadedConfig = hooks.config.loadConfig();
+
+    assert.equal(
+      hooks.commands.handleCommand(loadedConfig, {}, "/delegate heavy investigate architecture"),
+      "[model-router] error: tier 'heavy' is not available in preset 'anthropic'.",
+    );
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Claude plugin packaging preserves hooks CommonJS package metadata", async () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "claude-package-hooks-manifest-"));
+
+  try {
+    createClaudePluginFixture(tempRoot);
+
+    const packaged = await packageClaudePlugin(tempRoot, { formats: ["tar.gz"] });
+    const stagedHooksPackage = JSON.parse(
+      readFileSync(join(packaged.stageRoot, "hooks", "package.json"), "utf8"),
+    ) as {
+      private?: unknown;
+      type?: unknown;
+    };
+    const archiveEntries = normalizeArchiveEntries(await readTarEntries(packaged.tarGzPath ?? packaged.archivePath));
+    const extractRoot = join(tempRoot, "tmp", "claude-package-extract");
+
+    assert.deepEqual(stagedHooksPackage, { private: true, type: "commonjs" });
+    assert.equal(archiveEntries.includes(`${packaged.folderName}/hooks/package.json`), true);
+
+    mkdirSync(extractRoot, { recursive: true });
+    await tar.x({
+      file: packaged.tarGzPath ?? packaged.archivePath,
+      cwd: extractRoot,
+      gzip: true,
+    });
+
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(extractRoot, packaged.folderName, "hooks", "package.json"), "utf8")),
+      { private: true, type: "commonjs" },
     );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
