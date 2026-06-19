@@ -155,6 +155,11 @@ function validateConfig(raw) {
     }
     normalizedPresets[presetName] = normalizedPreset;
   }
+  if (!Object.prototype.hasOwnProperty.call(normalizedPresets, obj.activePreset)) {
+    throw new Error(
+      `tiers.json: activePreset '${obj.activePreset}' is not defined in presets`
+    );
+  }
   if (!isStringArray(obj.rules)) {
     throw new Error("tiers.json: 'rules' must be an array of strings");
   }

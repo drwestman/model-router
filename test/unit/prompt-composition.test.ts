@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { validateConfig } from "../../packages/core/src/index.ts";
 import { composePrompt } from "../../packages/opencode/src/index.ts";
 import { isClaudeModel } from "../../packages/opencode/src/providers/claude.ts";
 
@@ -39,4 +40,25 @@ test("isClaudeModel rejects undefined, empty, and non-Claude identifiers", () =>
   assert.equal(isClaudeModel(""), false);
   assert.equal(isClaudeModel("openai/gpt-5"), false);
   assert.equal(isClaudeModel("custom/sonnet-4"), false);
+});
+
+test("validateConfig rejects an activePreset that is missing from presets", () => {
+  assert.throws(
+    () =>
+      validateConfig({
+        activePreset: "missing",
+        defaultTier: "medium",
+        rules: [],
+        presets: {
+          anthropic: {
+            medium: {
+              model: "anthropic/claude-sonnet-4-6",
+              description: "Medium",
+              whenToUse: ["implement"],
+            },
+          },
+        },
+      }),
+    /tiers\.json: activePreset 'missing' is not defined in presets/,
+  );
 });

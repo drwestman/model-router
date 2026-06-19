@@ -177,6 +177,11 @@ function validateConfig(raw) {
     }
     normalizedPresets[presetName] = normalizedPreset;
   }
+  if (!Object.prototype.hasOwnProperty.call(normalizedPresets, obj.activePreset)) {
+    throw new Error(
+      `tiers.json: activePreset '${obj.activePreset}' is not defined in presets`
+    );
+  }
   if (!isStringArray(obj.rules)) {
     throw new Error("tiers.json: 'rules' must be an array of strings");
   }
@@ -423,9 +428,17 @@ function normalizeText(value) {
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-function hasKeyword(text, keyword) {
+function compileKeywordRegex(keyword) {
   const pattern = keyword.trim().split(/\s+/).map(escapeRegExp).join("\\s+");
-  return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`, "i").test(text);
+  return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`, "i");
+}
+var RULE_KEYWORD_REGEXES = {
+  fast: RULE_KEYWORDS.fast.map(compileKeywordRegex),
+  medium: RULE_KEYWORDS.medium.map(compileKeywordRegex),
+  heavy: RULE_KEYWORDS.heavy.map(compileKeywordRegex)
+};
+function hasKeyword(text, keyword) {
+  return (keyword instanceof RegExp ? keyword : compileKeywordRegex(keyword)).test(text);
 }
 function addMatches(text, tier, patterns, weight, scores) {
   let matches = 0;
@@ -451,7 +464,7 @@ function scorePrompt(config2, state2, prompt) {
     scores[explicitTier] += 10;
   }
   for (const tier2 of TIER_NAMES) {
-    const ruleMatches = addMatches(text, tier2, RULE_KEYWORDS[tier2], 2, scores);
+    const ruleMatches = addMatches(text, tier2, RULE_KEYWORD_REGEXES[tier2], 2, scores);
     const taskPatterns = (policy.taskPatterns?.[tier2] ?? []).filter(Boolean);
     const taskMatches = addMatches(text, tier2, taskPatterns, 3, scores);
     if (!strongTier && (ruleMatches >= 2 || taskMatches >= 2)) {

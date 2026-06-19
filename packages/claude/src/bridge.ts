@@ -117,20 +117,30 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function hasKeyword(text: string, keyword: string): boolean {
+function compileKeywordRegex(keyword: string): RegExp {
   const pattern = keyword
     .trim()
     .split(/\s+/)
     .map(escapeRegExp)
     .join("\\s+");
 
-  return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`, "i").test(text);
+  return new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`, "i");
+}
+
+const RULE_KEYWORD_REGEXES: Record<TierName, RegExp[]> = {
+  fast: RULE_KEYWORDS.fast.map(compileKeywordRegex),
+  medium: RULE_KEYWORDS.medium.map(compileKeywordRegex),
+  heavy: RULE_KEYWORDS.heavy.map(compileKeywordRegex),
+};
+
+function hasKeyword(text: string, keyword: string | RegExp): boolean {
+  return (keyword instanceof RegExp ? keyword : compileKeywordRegex(keyword)).test(text);
 }
 
 function addMatches(
   text: string,
   tier: TierName,
-  patterns: string[],
+  patterns: Array<string | RegExp>,
   weight: number,
   scores: Record<TierName, number>,
 ): number {
@@ -167,7 +177,7 @@ function scorePrompt(
   }
 
   for (const tier of TIER_NAMES) {
-    const ruleMatches = addMatches(text, tier, RULE_KEYWORDS[tier], 2, scores);
+    const ruleMatches = addMatches(text, tier, RULE_KEYWORD_REGEXES[tier], 2, scores);
     const taskPatterns = (policy.taskPatterns?.[tier] ?? []).filter(Boolean);
     const taskMatches = addMatches(text, tier, taskPatterns, 3, scores);
 

@@ -480,6 +480,13 @@ test("Claude prompt-submit injects full templates, hints, or nothing determinist
         input: JSON.stringify({ prompt: "implement the adapter bridge and tests" }),
       }),
     );
+    const fast = readHookAdditionalContext(
+      execFileSync(process.execPath, [promptSubmitScriptPath], {
+        encoding: "utf8",
+        env,
+        input: JSON.stringify({ prompt: "please look up and summarize release notes" }),
+      }),
+    );
     const moderate = readHookAdditionalContext(
       execFileSync(process.execPath, [promptSubmitScriptPath], {
         encoding: "utf8",
@@ -507,6 +514,22 @@ test("Claude prompt-submit injects full templates, hints, or nothing determinist
         "if they are unavailable, do the same work locally.",
         "task:",
         "implement the adapter bridge and tests",
+      ].join("\n"),
+    );
+    assert.equal(
+      fast,
+      [
+        "[model-router]",
+        "delegate: @fast",
+        "preset: anthropic",
+        "mode: normal",
+        "model: anthropic/claude-haiku-4-5",
+        "cap: 8",
+        "contract: read-only exploration, concrete findings, no code edits",
+        "if native Claude subagents are available, delegate the task below.",
+        "if they are unavailable, do the same work locally.",
+        "task:",
+        "please look up and summarize release notes",
       ].join("\n"),
     );
     assert.equal(
