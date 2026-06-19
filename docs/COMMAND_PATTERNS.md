@@ -31,7 +31,7 @@ config: async (opencodeConfig: any) => {
   
   opencodeConfig.command["budget"] = {
     template: "$ARGUMENTS",
-    description: "Show or switch routing mode (e.g., /budget, /budget budget, /budget quality)",
+    description: "Show or switch routing mode (e.g., /mode, /mode budget, /mode ponytail)",
   };
   
   opencodeConfig.command["annotate-plan"] = {
@@ -144,7 +144,7 @@ function buildBudgetOutput(cfg: RouterConfig, args: string): string {
       const active = name === currentMode ? " <- active" : "";
       lines.push(`- **${name}**${active}: ${mode.description}...`);
     }
-    lines.push(`\nSwitch with: \`/budget <mode>\``);
+    lines.push(`\nSwitch with: \`/mode <mode>\``);
     return lines.join("\n");
   }
 

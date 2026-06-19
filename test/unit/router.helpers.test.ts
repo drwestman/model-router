@@ -357,7 +357,7 @@ test("buildAgentDefinition applies Claude prefix for proxied Claude models regar
   }
 });
 
-test("budget ponytail command persists the ponytail mode", async () => {
+test("mode ponytail command persists the ponytail mode", async () => {
   const env = createRouterTestEnv();
 
   try {
@@ -367,7 +367,7 @@ test("budget ponytail command persists the ponytail mode", async () => {
 
     await plugin["command.execute.before"](
       {
-        command: "budget",
+        command: "mode",
         arguments: "ponytail",
       },
       output,
@@ -645,7 +645,7 @@ test("plugin config registers agents and commands without provider metadata", as
     for (const command of [
       "tiers",
       "preset",
-      "budget",
+      "mode",
       "bypass",
       "ponytail-review",
       "annotate-plan",
@@ -686,17 +686,17 @@ test("tui plugin registers slash commands and dispatches them through the prompt
 
   assert.deepEqual(
     commands.map((command) => command.slash).map((slash) => (slash as { name: string }).name),
-    ["tiers", "preset", "budget", "bypass", "ponytail-review", "annotate-plan"],
+    ["tiers", "preset", "mode", "bypass", "ponytail-review", "annotate-plan"],
   );
 
-  const budgetCommand = commands.find((command) => command.value === "model-router.budget") as {
+  const modeCommand = commands.find((command) => command.value === "model-router.mode") as {
     onSelect: () => Promise<void>;
   };
-  await budgetCommand.onSelect();
+  await modeCommand.onSelect();
 
   assert.deepEqual(calls, [
     ["clearPrompt"],
-    ["appendPrompt", "/budget"],
+    ["appendPrompt", "/mode"],
     ["submitPrompt"],
   ]);
 });

@@ -7,7 +7,7 @@ Feature: model router behavior
 
   Scenario: budget mode switching persists the selected mode
     Given the router plugin is loaded from the fixture config
-    When I run the "/budget budget" command
+    When I run the "/mode budget" command
     Then the command output should mention budget mode switching
     And the persisted state should contain mode "budget"
 

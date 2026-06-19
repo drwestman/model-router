@@ -4,8 +4,13 @@
   "private": true,
   "description": "Private Claude hook plugin for model-router",
   "type": "module",
-  "main": "./src/index.ts",
-  "exports": "./src/index.ts",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
   "license": "GPL-3.0-only",
   "engines": {
     "node": "^20.0.0 || ^22.0.0 || >=24.0.0"

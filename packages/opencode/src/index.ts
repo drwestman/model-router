@@ -1,6 +1,11 @@
 /// <reference path="./opencode-ai-plugin.d.ts" />
 
 import type { Plugin, PluginInput } from "@opencode-ai/plugin";
+import {
+  MODE_COMMAND_NAME,
+  resolveModeName,
+  validateConfig as validateCanonicalConfig,
+} from "@drwestman/model-router-core";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
@@ -60,10 +65,10 @@ function getRouterCommandSpecs(): Record<string, RouterCommandSpec> {
       template: "$ARGUMENTS",
       description: "Show or switch model presets (e.g., /preset openai)",
     },
-    budget: {
+    [MODE_COMMAND_NAME]: {
       template: "$ARGUMENTS",
       description:
-        "Show or switch routing mode (e.g., /budget, /budget budget, /budget ponytail)",
+        "Show or switch routing mode (e.g., /mode, /mode budget, /mode ponytail)",
     },
     bypass: {
       template: "$ARGUMENTS",
@@ -335,182 +340,8 @@ export function resolvePresetName(
   );
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
 export function validateConfig(raw: unknown): RouterConfig {
-  if (typeof raw !== "object" || raw === null) {
-    throw new Error("tiers.json: expected a JSON object at root");
-  }
-
-  const obj = raw as Record<string, unknown>;
-
-  if (typeof obj.activePreset !== "string" || !obj.activePreset) {
-    throw new Error("tiers.json: 'activePreset' must be a non-empty string");
-  }
-  if (
-    typeof obj.presets !== "object" ||
-    obj.presets === null ||
-    Array.isArray(obj.presets)
-  ) {
-    throw new Error("tiers.json: 'presets' must be a non-null object");
-  }
-
-  const presets = obj.presets as Record<string, unknown>;
-  for (const [presetName, preset] of Object.entries(presets)) {
-    if (
-      typeof preset !== "object" ||
-      preset === null ||
-      Array.isArray(preset)
-    ) {
-      throw new Error(`tiers.json: preset '${presetName}' must be an object`);
-    }
-    const tiers = preset as Record<string, unknown>;
-    for (const [tierName, tier] of Object.entries(tiers)) {
-      if (typeof tier !== "object" || tier === null) {
-        throw new Error(
-          `tiers.json: tier '${presetName}.${tierName}' must be an object`,
-        );
-      }
-      const t = tier as Record<string, unknown>;
-      if (typeof t.model !== "string" || !t.model) {
-        throw new Error(
-          `tiers.json: '${presetName}.${tierName}.model' must be a non-empty string`,
-        );
-      }
-      if (typeof t.description !== "string") {
-        throw new Error(
-          `tiers.json: '${presetName}.${tierName}.description' must be a string`,
-        );
-      }
-      if (!isStringArray(t.whenToUse)) {
-        throw new Error(
-          `tiers.json: '${presetName}.${tierName}.whenToUse' must be an array of strings`,
-        );
-      }
-    }
-  }
-
-  if (!isStringArray(obj.rules)) {
-    throw new Error("tiers.json: 'rules' must be an array of strings");
-  }
-  if (typeof obj.defaultTier !== "string") {
-    throw new Error("tiers.json: 'defaultTier' must be a string");
-  }
-
-  // Validate modes if present
-  if (obj.modes !== undefined) {
-    if (
-      typeof obj.modes !== "object" ||
-      obj.modes === null ||
-      Array.isArray(obj.modes)
-    ) {
-      throw new Error("tiers.json: 'modes' must be an object");
-    }
-    const modes = obj.modes as Record<string, unknown>;
-    for (const [modeName, mode] of Object.entries(modes)) {
-      if (typeof mode !== "object" || mode === null) {
-        throw new Error(`tiers.json: mode '${modeName}' must be an object`);
-      }
-      const m = mode as Record<string, unknown>;
-      if (typeof m.defaultTier !== "string") {
-        throw new Error(
-          `tiers.json: mode '${modeName}.defaultTier' must be a string`,
-        );
-      }
-      if (typeof m.description !== "string") {
-        throw new Error(
-          `tiers.json: mode '${modeName}.description' must be a string`,
-        );
-      }
-      if (m.overrideRules !== undefined && !isStringArray(m.overrideRules)) {
-        throw new Error(
-          `tiers.json: mode '${modeName}.overrideRules' must be an array of strings`,
-        );
-      }
-      if (m.tierPrompts !== undefined) {
-        if (
-          typeof m.tierPrompts !== "object" ||
-          m.tierPrompts === null ||
-          Array.isArray(m.tierPrompts)
-        ) {
-          throw new Error(
-            `tiers.json: mode '${modeName}.tierPrompts' must be an object`,
-          );
-        }
-
-        for (const [tierName, prompt] of Object.entries(
-          m.tierPrompts as Record<string, unknown>,
-        )) {
-          if (typeof prompt !== "string") {
-            throw new Error(
-              `tiers.json: mode '${modeName}.tierPrompts.${tierName}' must be a string`,
-            );
-          }
-        }
-      }
-    }
-  }
-
-  // Validate tierCaps if present
-  if (obj.tierCaps !== undefined) {
-    if (
-      typeof obj.tierCaps !== "object" ||
-      obj.tierCaps === null ||
-      Array.isArray(obj.tierCaps)
-    ) {
-      throw new Error("tiers.json: 'tierCaps' must be an object");
-    }
-    const tc = obj.tierCaps as Record<string, unknown>;
-    for (const [tierName, cap] of Object.entries(tc)) {
-      if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1) {
-        throw new Error(
-          `tiers.json: tierCaps.'${tierName}' must be a positive integer`,
-        );
-      }
-    }
-  }
-
-  // Validate tierPrompts if present
-  if (obj.tierPrompts !== undefined) {
-    if (
-      typeof obj.tierPrompts !== "object" ||
-      obj.tierPrompts === null ||
-      Array.isArray(obj.tierPrompts)
-    ) {
-      throw new Error("tiers.json: 'tierPrompts' must be an object");
-    }
-    const tp = obj.tierPrompts as Record<string, unknown>;
-    for (const [tierName, prompt] of Object.entries(tp)) {
-      if (typeof prompt !== "string") {
-        throw new Error(
-          `tiers.json: tierPrompts.'${tierName}' must be a string`,
-        );
-      }
-    }
-  }
-
-  // Validate taskPatterns if present
-  if (obj.taskPatterns !== undefined) {
-    if (
-      typeof obj.taskPatterns !== "object" ||
-      obj.taskPatterns === null ||
-      Array.isArray(obj.taskPatterns)
-    ) {
-      throw new Error("tiers.json: 'taskPatterns' must be an object");
-    }
-    const tp = obj.taskPatterns as Record<string, unknown>;
-    for (const [tierName, patterns] of Object.entries(tp)) {
-      if (!isStringArray(patterns)) {
-        throw new Error(
-          `tiers.json: taskPatterns.'${tierName}' must be an array of strings`,
-        );
-      }
-    }
-  }
-
-  return raw as RouterConfig;
+  return validateCanonicalConfig(raw);
 }
 
 export function applyPersistedState(
@@ -527,8 +358,9 @@ export function applyPersistedState(
     }
   }
 
-  if (normalizedState.activeMode && cfg.modes?.[normalizedState.activeMode]) {
-    nextCfg.activeMode = normalizedState.activeMode;
+  const resolvedMode = resolveModeName(cfg, normalizedState.activeMode);
+  if (resolvedMode) {
+    nextCfg.activeMode = resolvedMode;
   }
 
   return nextCfg;
@@ -730,12 +562,13 @@ function saveActivePreset(presetName: string): void {
 
 function saveActiveMode(modeName: string): void {
   const cfg = loadConfig();
-  if (!cfg.modes?.[modeName]) {
+  const resolvedMode = resolveModeName(cfg, modeName);
+  if (!resolvedMode) {
     return;
   }
 
-  cfg.activeMode = modeName;
-  writeState({ activeMode: modeName });
+  cfg.activeMode = resolvedMode;
+  writeState({ activeMode: resolvedMode });
   invalidateConfigCache();
 }
 
@@ -961,17 +794,17 @@ function buildTiersOutput(cfg: RouterConfig): string {
 }
 
 // ---------------------------------------------------------------------------
-// /budget command output
+// /mode command output
 // ---------------------------------------------------------------------------
 
 function normalizeCommandArgs(args: unknown): string {
   return typeof args === "string" ? args : "";
 }
 
-export function buildBudgetOutput(cfg: RouterConfig, args: unknown): string {
+export function buildModeOutput(cfg: RouterConfig, args: unknown): string {
   const modes = cfg.modes;
   if (!modes || Object.keys(modes).length === 0) {
-    return 'No modes configured in tiers.json. Add a "modes" section to enable budget mode.';
+    return 'No modes configured in tiers.json. Add a "modes" section to enable routing modes.';
   }
 
   const requested = normalizeCommandArgs(args).trim().toLowerCase();
@@ -986,16 +819,17 @@ export function buildBudgetOutput(cfg: RouterConfig, args: unknown): string {
         `- **${name}**${active}: ${mode.description} (default tier: @${mode.defaultTier})`,
       );
     }
-    lines.push(`\nSwitch with: \`/budget <mode>\``);
+    lines.push(`\nSwitch with: \`/${MODE_COMMAND_NAME} <mode>\``);
     return lines.join("\n");
   }
 
   // Switch mode
-  if (modes[requested]) {
-    saveActiveMode(requested);
-    const mode = modes[requested];
+  const resolvedMode = resolveModeName(cfg, requested);
+  if (resolvedMode) {
+    saveActiveMode(resolvedMode);
+    const mode = modes[resolvedMode];
     return [
-      `Routing mode switched to **${requested}**.`,
+      `Routing mode switched to **${resolvedMode}**.`,
       "",
       mode.description,
       `Default tier: @${mode.defaultTier}`,
@@ -1346,7 +1180,7 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
     },
 
     // -----------------------------------------------------------------------
-    // Inject delegation protocol — uses cached config (invalidated on /preset or /budget)
+    // Inject delegation protocol — uses cached config (invalidated on /preset or /mode)
     // Only inject for the primary orchestrator, NOT for subagent calls.
     // Subagents get confused by delegation instructions when they should
     // just execute a task (especially smaller models like Haiku).
@@ -1387,9 +1221,20 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
     },
 
     // -----------------------------------------------------------------------
-    // Handle /tiers, /preset, and /budget commands
+    // Handle /tiers, /preset, and /mode commands
     // -----------------------------------------------------------------------
     "command.execute.before": async (input: any, output: any) => {
+      if (input.command === MODE_COMMAND_NAME) {
+        try {
+          cfg = loadConfig();
+        } catch {}
+        output.parts.push({
+          type: "text" as const,
+          text: buildModeOutput(cfg, input.args ?? input.arguments ?? ""),
+        });
+        return;
+      }
+
       if (input.command === "tiers") {
         try {
           cfg = loadConfig();
@@ -1429,15 +1274,6 @@ const ModelRouterPlugin: Plugin = (_ctx: PluginInput) => {
         });
       }
 
-      if (input.command === "budget") {
-        try {
-          cfg = loadConfig();
-        } catch {}
-        output.parts.push({
-          type: "text" as const,
-          text: buildBudgetOutput(cfg, input.arguments ?? ""),
-        });
-      }
     },
   };
 };

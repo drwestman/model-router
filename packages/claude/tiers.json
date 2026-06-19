@@ -1,27 +1,39 @@
 {
-  "defaultPreset": "anthropic",
-  "defaultMode": "normal",
+  "activePreset": "anthropic",
+  "activeMode": "normal",
+  "defaultTier": "medium",
   "tierCaps": {
     "fast": 8,
     "medium": 5,
     "heavy": 3
   },
+  "taskPatterns": {
+    "fast": ["search", "inspect", "read", "grep", "docs", "lookup"],
+    "medium": ["implement", "fix", "refactor", "write", "test", "update"],
+    "heavy": ["architecture", "security", "performance", "root cause", "migration"]
+  },
   "presets": {
     "anthropic": {
-      "label": "Anthropic",
-      "tiers": {
-        "fast": {
-          "model": "anthropic/claude-haiku-4-5",
-          "description": "Quick search, exploration, and read-only work."
-        },
-        "medium": {
-          "model": "anthropic/claude-sonnet-4-6",
-          "description": "Default implementation, refactoring, and test work."
-        },
-        "heavy": {
-          "model": "anthropic/claude-opus-4-6",
-          "description": "Deep analysis, debugging, and architecture work."
-        }
+      "fast": {
+        "model": "anthropic/claude-haiku-4-5",
+        "description": "Quick search, exploration, and read-only work.",
+        "costRatio": 1,
+        "steps": 2,
+        "whenToUse": ["search", "inspect", "docs", "grep"]
+      },
+      "medium": {
+        "model": "anthropic/claude-sonnet-4-6",
+        "description": "Default implementation, refactoring, and test work.",
+        "costRatio": 5,
+        "steps": 4,
+        "whenToUse": ["implement", "fix", "refactor", "test"]
+      },
+      "heavy": {
+        "model": "anthropic/claude-opus-4-6",
+        "description": "Deep analysis, debugging, and architecture work.",
+        "costRatio": 20,
+        "steps": 6,
+        "whenToUse": ["architecture", "security", "performance", "root cause"]
       }
     }
   },
@@ -51,6 +63,7 @@
     "Read-only exploration should favor the fast tier.",
     "Implementation should default to medium unless the active mode says otherwise.",
     "Architecture, security, and multi-system debugging should escalate to heavy.",
-    "Keep prompts concise and prefer the smallest correct change."
+    "Keep prompts concise and prefer the smallest correct change.",
+    "If native Claude subagents are unavailable, follow the same tier contract locally."
   ]
 }
