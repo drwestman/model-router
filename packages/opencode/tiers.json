@@ -68,6 +68,9 @@
       "medium": {
         "model": "openai/gpt-5.4",
         "variant": "high",
+        "reasoning": {
+          "effort": "high"
+        },
         "costRatio": 5,
         "description": "GPT-5.4 default settings for implementation and standard coding",
         "steps": 50,
@@ -187,6 +190,9 @@
       "medium": {
         "model": "openai/gpt-5.5-fast",
         "variant": "high",
+        "reasoning": {
+          "effort": "high"
+        },
         "costRatio": 5,
         "description": "GPT-5.5 fast default settings for implementation and standard coding",
         "steps": 50,

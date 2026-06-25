@@ -164,7 +164,16 @@ function buildPresetOutput(cfg: RouterConfig, args: string): string {
     const lines = ["# Available Presets\n"];
     for (const [name, tiers] of Object.entries(cfg.presets)) {
       const active = name === cfg.activePreset ? " <- active" : "";
-      lines.push(`- **${name}**${active}: ${description}`);
+      const models = Object.entries(
+        tiers as Record<string, { model: string; reasoning?: { effort?: string } }>,
+      )
+        .map(([tier, t]) => {
+          const short = t.model.split("/").pop() ?? t.model;
+          const effort = t.reasoning?.effort ? ` (${t.reasoning.effort})` : "";
+          return `${tier}: ${short}${effort}`;
+        })
+        .join(", ");
+      lines.push(`- **${name}**${active}: ${models}`);
     }
     lines.push(`\nSwitch with: \`/preset <name>\``);
     return lines.join("\n");
