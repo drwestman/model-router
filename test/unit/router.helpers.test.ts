@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ModelRouterPlugin, {
+  buildPresetOutput,
   invalidateConfigCache,
   routerBuildInfo,
   routerVersion,
@@ -47,6 +48,30 @@ test("loadConfigFromPaths applies persisted preset and mode", () => {
     assert.equal(cfg.activeMode, "budget");
   } finally {
     env.cleanup();
+  }
+});
+
+test("buildPresetOutput appends reasoning effort only when configured", () => {
+  const env = createRouterTestEnv();
+
+  try {
+    const cfg = loadConfigFromPaths({
+      configPath: env.configPath,
+      statePath: env.statePath,
+    });
+    const output = buildPresetOutput(cfg, "");
+
+    assert.match(
+      output,
+      /- \*\*anthropic\*\* <- active: fast: claude-haiku-4-5, medium: claude-sonnet-4-6, heavy: claude-opus-4-6/,
+    );
+    assert.match(
+      output,
+      /- \*\*openai\*\*: fast: gpt-5\.4-mini-fast, medium: gpt-5\.4-fast \(high\), heavy: gpt-5\.5-fast/,
+    );
+  } finally {
+    env.cleanup();
+    invalidateConfigCache();
   }
 });
 

@@ -654,7 +654,11 @@ export function buildPresetOutput(cfg, args) {
         for (const [name, tiers] of Object.entries(cfg.presets ?? {})) {
             const active = name === getActivePresetName(cfg) ? " <- active" : "";
             const models = Object.entries(tiers ?? {})
-                .map(([tier, t]) => `${tier}: ${t.model.split("/").pop()}`)
+                .map(([tier, t]) => {
+                const short = t.model.split("/").pop() ?? t.model;
+                const effort = t.reasoning?.effort ? ` (${t.reasoning.effort})` : "";
+                return `${tier}: ${short}${effort}`;
+            })
                 .join(", ");
             lines.push(`- **${name}**${active}: ${models}`);
         }
